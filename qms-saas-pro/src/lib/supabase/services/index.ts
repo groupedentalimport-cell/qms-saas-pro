@@ -1,0 +1,15 @@
+export { BaseService } from './base-service';
+export { DocumentService } from './document-service';
+export { CapaService } from './capa-service';
+export { NcrService } from './ncr-service';
+export { AuditService } from './audit-service';
+export { TrainingService } from './training-service';
+export { RiskService } from './risk-service';
+export { BatchRecordService } from './batch-record-service';
+export { SupplierService } from './supplier-service';
+export { FormService } from './form-service';
+export { ChangeControlService } from './change-control-service';
+export { DeviationService } from './deviation-service';
+export { AuditTrailService } from './audit-trail-service';
+export { ProfileService } from './profile-service';
+export { OrganizationService } from './organization-service';

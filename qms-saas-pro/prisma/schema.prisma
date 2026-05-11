@@ -1,0 +1,366 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Profile {
+  id           String   @id
+  email        String   @unique
+  fullName     String?
+  role         String   @default("operator")
+  department   String?
+  jobTitle     String?
+  phone        String?
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  organizations OrganizationMember[]
+  authoredDocuments   Document[]     @relation("DocumentAuthor")
+  createdDocuments    Document[]     @relation("DocumentCreator")
+  capas               Capa[]         @relation("CapaCreator")
+  ncrs                NonConformance[] @relation("NcrCreator")
+  signatures          ElectronicSignature[]
+  qaReleasedBatches   BatchRecord[]  @relation("BatchQARelease")
+  createdBatches      BatchRecord[]  @relation("BatchCreator")
+  submittedForms      FormInstance[] @relation("FormSubmitter")
+  createdForms        FormInstance[] @relation("FormCreator")
+  createdSuppliers    Supplier[]     @relation("SupplierCreator")
+  createdFormTemplates FormTemplate[] @relation("FormTemplateCreator")
+}
+
+model Organization {
+  id                String   @id @default(uuid())
+  name              String
+  slug              String   @unique
+  subscriptionStatus String @default("trial")
+  settings          String   @default("{\"setup_completed\":false,\"industry_type\":\"medical_device\",\"applicable_standards\":[\"ISO 13485:2016\"],\"active_modules\":[\"documents\",\"capa\",\"ncr\",\"audits\",\"training\",\"reports\",\"compliance\"]}")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  members           OrganizationMember[]
+  documents         Document[]
+  capas             Capa[]
+  ncrs              NonConformance[]
+  batchRecords      BatchRecord[]
+  suppliers         Supplier[]
+  formTemplates     FormTemplate[]
+  formInstances     FormInstance[]
+  auditTrails       AuditTrail[]
+  documentPrerequisites DocumentPrerequisite[]
+}
+
+model OrganizationMember {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String
+  role           String   @default("member")
+  status         String   @default("active")
+  invitedBy      String?
+  createdAt      DateTime @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  profile        Profile      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+}
+
+model Document {
+  id                 String   @id @default(uuid())
+  documentNumber     String
+  title              String
+  type               String
+  version            String   @default("1.0")
+  status             String   @default("Draft")
+  effectiveDate      DateTime?
+  expirationDate     DateTime?
+  owner              String?
+  department         String?
+  lastReviewed       DateTime?
+  nextReview         DateTime?
+  description        String?
+  classification     String?
+  retentionPeriod    String?
+  scope              String?
+  references         String?
+  typeSpecificData   String?
+  parentDocumentId   String?
+  documentLevel      Int?
+  validationPhase    String?
+  parentValidationId String?
+  authorId           String?
+  organizationId     String?
+  createdById        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  signatures         ElectronicSignature[]
+  childDocuments     Document[]       @relation("DocumentHierarchy")
+  parentDocument     Document?        @relation("DocumentHierarchy", fields: [parentDocumentId], references: [id])
+  childValidations   Document[]       @relation("ValidationHierarchy")
+  parentValidation   Document?        @relation("ValidationHierarchy", fields: [parentValidationId], references: [id])
+  author             Profile?         @relation("DocumentAuthor", fields: [authorId], references: [id])
+  organization       Organization?    @relation(fields: [organizationId], references: [id])
+  createdBy          Profile?         @relation("DocumentCreator", fields: [createdById], references: [id])
+  capas              Capa[]
+  batchRecords       BatchRecord[]
+  formTemplates      FormTemplate[]
+}
+
+model ElectronicSignature {
+  id              String   @id @default(uuid())
+  documentId      String
+  signedById      String
+  signerName      String
+  signerRole      String
+  signatureType   String
+  signatureHash   String
+  userAgent       String?
+  revoked         Boolean  @default(false)
+  revocationReason String?
+  createdAt       DateTime @default(now())
+  document        Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  signedBy        Profile  @relation(fields: [signedById], references: [id])
+}
+
+model DocumentPrerequisite {
+  id               String   @id @default(uuid())
+  organizationId   String?
+  recordType       String
+  requiredDocType  String
+  requiredDocRef   String?
+  isMandatory      Boolean  @default(true)
+  description      String?
+  createdAt        DateTime @default(now())
+  organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model Capa {
+  id                          String   @id @default(uuid())
+  capaNumber                  String   @unique
+  title                       String
+  type                        String
+  status                      String   @default("Open")
+  priority                    String?
+  source                      String?
+  sourceReferenceId           String?
+  description                 String
+  problemStatement            String?
+  investigationDetails        String?
+  rootCauseAnalysis           String?
+  rootCauseCategory           String?
+  fiveWhys                    String?
+  correctiveAction            String?
+  effectivenessVerificationMethod String?
+  effectivenessCriteria       String?
+  effectivenessResult         String?
+  linkedDocumentId            String?
+  linkedNcrId                 String?
+  linkedAuditId               String?
+  assignedTo                  String
+  dueDate                     DateTime
+  createdDate                 DateTime
+  closedDate                  DateTime?
+  createdById                 String?
+  organizationId              String?
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+  linkedDocument              Document?     @relation(fields: [linkedDocumentId], references: [id])
+  createdBy                   Profile?      @relation("CapaCreator", fields: [createdById], references: [id])
+  organization                Organization? @relation(fields: [organizationId], references: [id])
+}
+
+model NonConformance {
+  id               String   @id @default(uuid())
+  ncrNumber        String   @unique
+  title            String
+  type             String
+  status           String   @default("Open")
+  severity         String?
+  source           String?
+  description      String
+  lotNumber        String?
+  quantityAffected Int?
+  disposition      String?
+  linkedCapaId     String?
+  linkedProcedureRef String?
+  supplierId       String?
+  isOosOot         Boolean  @default(false)
+  analyticalMethod String?
+  measuredValue    Float?
+  measuredUnit     String?
+  specLimit        String?
+  phase1Conclusion String?
+  phase2Required   Boolean  @default(false)
+  phase2Conclusion String?
+  rejectLot        Boolean  @default(false)
+  assignedTo       String?
+  createdDate      DateTime
+  createdById      String?
+  organizationId   String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  createdBy        Profile?      @relation("NcrCreator", fields: [createdById], references: [id])
+  organization     Organization? @relation(fields: [organizationId], references: [id])
+}
+
+model BatchRecord {
+  id               String   @id @default(uuid())
+  lotNumber        String   @unique
+  productName      String
+  productCode      String?
+  batchSize        Float?
+  batchSizeUnit    String?
+  masterFormulaId  String?
+  manufacturingDate DateTime
+  expiryDate       DateTime?
+  status           String   @default("In Progress")
+  isLocked         Boolean  @default(false)
+  qaReleaseDate    DateTime?
+  qaReleasedById   String?
+  organizationId   String?
+  createdById      String?
+  createdAt        DateTime @default(now())
+  masterFormula    Document?     @relation(fields: [masterFormulaId], references: [id])
+  qaReleasedBy     Profile?      @relation("BatchQARelease", fields: [qaReleasedById], references: [id])
+  organization     Organization? @relation(fields: [organizationId], references: [id])
+  createdBy        Profile?      @relation("BatchCreator", fields: [createdById], references: [id])
+  steps            BatchStep[]
+}
+
+model BatchStep {
+  id            String   @id @default(uuid())
+  batchRecordId String
+  stepOrder     Int
+  stepName      String
+  instructions  String?
+  expectedValue String?
+  actualValue   String?
+  status        String   @default("Pending")
+  operatorId    String?
+  performedAt   DateTime?
+  signatureHash String?
+  createdAt     DateTime @default(now())
+  batchRecord   BatchRecord @relation(fields: [batchRecordId], references: [id], onDelete: Cascade)
+}
+
+model Supplier {
+  id                String   @id @default(uuid())
+  supplierCode      String   @unique
+  name              String
+  category          String?
+  status            String   @default("Qualified")
+  qualificationDate DateTime?
+  nextReviewDate    DateTime?
+  certifications    String?
+  performanceScore  Float?
+  qualificationDocId String?
+  organizationId    String?
+  createdById       String?
+  createdAt         DateTime @default(now())
+  organization      Organization? @relation(fields: [organizationId], references: [id])
+  createdBy         Profile?      @relation("SupplierCreator", fields: [createdById], references: [id])
+}
+
+model FormTemplate {
+  id             String   @id @default(uuid())
+  documentId     String
+  title          String
+  version        String   @default("1.0")
+  fields         String   @default("[]")
+  isActive       Boolean  @default(true)
+  organizationId String?
+  createdById    String?
+  createdAt      DateTime @default(now())
+  document       Document      @relation(fields: [documentId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  createdBy      Profile?      @relation("FormTemplateCreator", fields: [createdById], references: [id])
+  instances      FormInstance[]
+}
+
+model FormInstance {
+  id               String   @id @default(uuid())
+  templateId       String
+  templateVersion  String
+  referenceNumber  String   @unique
+  values           String   @default("{}")
+  status           String   @default("Draft")
+  isLocked         Boolean  @default(false)
+  submittedById    String?
+  submittedAt      DateTime?
+  signatureHash    String?
+  parentDocumentId String?
+  organizationId   String?
+  createdById      String?
+  createdAt        DateTime @default(now())
+  template         FormTemplate  @relation(fields: [templateId], references: [id])
+  submittedBy      Profile?      @relation("FormSubmitter", fields: [submittedById], references: [id])
+  organization     Organization? @relation(fields: [organizationId], references: [id])
+  createdBy        Profile?      @relation("FormCreator", fields: [createdById], references: [id])
+}
+
+model AuditTrail {
+  id             String   @id @default(uuid())
+  action         String
+  tableName      String
+  recordId       String?
+  userId         String?
+  userEmail      String?
+  oldValues      String?
+  newValues      String?
+  ipAddress      String?
+  userAgent      String?
+  organizationId String?
+  createdAt      DateTime @default(now())
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+}
+
+model Audit {
+  id             String   @id @default(uuid())
+  auditNumber    String   @unique
+  title          String
+  type           String   @default("Internal")
+  status         String   @default("Planned")
+  scope          String?
+  scheduledDate  DateTime
+  completedDate  DateTime?
+  leadAuditor    String
+  auditees       String?
+  findings       String?
+  organizationId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Training {
+  id             String   @id @default(uuid())
+  title          String
+  description    String?
+  type           String
+  status         String   @default("Planned")
+  assignedTo     String
+  dueDate        DateTime
+  completedDate  DateTime?
+  documentId     String?
+  organizationId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Risk {
+  id             String   @id @default(uuid())
+  riskNumber     String   @unique
+  title          String
+  category       String?
+  probability    Int      @default(3)
+  impact         Int      @default(3)
+  detectability  Int      @default(3)
+  rpn            Int      @default(27)
+  riskLevel      String   @default("Medium")
+  mitigation     String?
+  residualRisk   String?
+  status         String   @default("Open")
+  organizationId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
