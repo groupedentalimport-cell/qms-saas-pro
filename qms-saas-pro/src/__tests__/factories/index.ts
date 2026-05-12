@@ -35,7 +35,6 @@ export function createProfile(overrides: Partial<Profile> = {}): Profile {
     avatarUrl: undefined,
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-01T00:00:00.000Z',
-    organizationId: 'org-001',
     ...overrides,
   };
 }
@@ -288,7 +287,6 @@ export function createBatchRecord(overrides: Partial<BatchRecord> = {}): BatchRe
     organizationId: 'org-001',
     createdById: 'user-001',
     createdAt: '2024-01-01T00:00:00.000Z',
-    updatedAt: '2024-01-01T00:00:00.000Z',
     ...overrides,
   };
 }
@@ -313,7 +311,6 @@ export function createSupplier(overrides: Partial<Supplier> = {}): Supplier {
     organizationId: 'org-001',
     createdById: 'user-001',
     createdAt: '2024-01-01T00:00:00.000Z',
-    updatedAt: '2024-01-01T00:00:00.000Z',
     ...overrides,
   };
 }
@@ -422,7 +419,6 @@ export function createFormTemplate(overrides: Partial<FormTemplate> = {}): FormT
     organizationId: 'org-001',
     createdById: 'user-001',
     createdAt: '2024-01-01T00:00:00.000Z',
-    updatedAt: '2024-01-01T00:00:00.000Z',
     ...overrides,
   };
 }
@@ -448,7 +444,6 @@ export function createFormInstance(overrides: Partial<FormInstance> = {}): FormI
     organizationId: 'org-001',
     createdById: 'user-001',
     createdAt: '2024-01-01T00:00:00.000Z',
-    updatedAt: '2024-01-01T00:00:00.000Z',
     ...overrides,
   };
 }

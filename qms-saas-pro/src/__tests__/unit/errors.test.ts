@@ -92,10 +92,12 @@ describe('COMPLIANCE_CODES', () => {
     'INVALID_STATUS_TRANSITION',
     'DUPLICATE_RECORD',
     'REQUIRED_FIELD_MISSING',
+    'ENTITY_NOT_FOUND',
+    'BACKEND_NOT_CONFIGURED',
   ] as const;
 
-  it('has exactly 10 codes', () => {
-    expect(Object.keys(COMPLIANCE_CODES)).toHaveLength(10);
+  it('has exactly 12 codes', () => {
+    expect(Object.keys(COMPLIANCE_CODES)).toHaveLength(12);
   });
 
   it.each(expectedCodes)('contains the code "%s"', (code) => {
@@ -119,12 +121,12 @@ describe('COMPLIANCE_CODES', () => {
 describe('ComplianceCode', () => {
   it('every COMPLIANCE_CODES value is a valid ComplianceCode', () => {
     const allCodes: ComplianceCode[] = Object.values(COMPLIANCE_CODES);
-    expect(allCodes).toHaveLength(10);
+    expect(allCodes).toHaveLength(12);
 
     // Each code should be assignable to ComplianceCode (this is a compile-time
     // check, but we can verify runtime uniqueness too)
     const unique = new Set<ComplianceCode>(allCodes);
-    expect(unique.size).toBe(10);
+    expect(unique.size).toBe(12);
   });
 
   it('ComplianceCode matches the union of all code values', () => {
@@ -140,6 +142,8 @@ describe('ComplianceCode', () => {
       'INVALID_STATUS_TRANSITION',
       'DUPLICATE_RECORD',
       'REQUIRED_FIELD_MISSING',
+      'ENTITY_NOT_FOUND',
+      'BACKEND_NOT_CONFIGURED',
     ];
     expect(codes.sort()).toEqual(expected.sort());
   });

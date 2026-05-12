@@ -83,8 +83,9 @@ export function createBatchRecord(batch: Omit<BatchRecord, 'id' | 'createdAt'> &
 /**
  * Met à jour un dossier de lot.
  * - Bloque la modification si le lot est verrouillé (BATCH_LOCKED) (spec §5.3)
+ * - Logs explicit audit trail with old/new values
  */
-export function updateBatchRecord(id: string, updates: Partial<BatchRecord>): BatchRecord {
+export function updateBatchRecord(id: string, updates: Partial<BatchRecord>, organizationId?: string): BatchRecord {
   const store = useQMSStore.getState();
   const existing = store.batchRecords.find(b => b.id === id);
 
@@ -92,6 +93,15 @@ export function updateBatchRecord(id: string, updates: Partial<BatchRecord>): Ba
     throw new ComplianceError(
       `Dossier de lot ${id} introuvable`,
       COMPLIANCE_CODES.REQUIRED_FIELD_MISSING
+    );
+  }
+
+  // Validate organization access
+  const effectiveOrgId = organizationId || existing.organizationId;
+  if (effectiveOrgId && existing.organizationId && existing.organizationId !== effectiveOrgId) {
+    throw new ComplianceError(
+      `Batch record ${id} does not belong to organization ${effectiveOrgId}`,
+      COMPLIANCE_CODES.INSUFFICIENT_PERMISSIONS
     );
   }
 
@@ -111,10 +121,28 @@ export function updateBatchRecord(id: string, updates: Partial<BatchRecord>): Ba
     );
   }
 
+  // Capture old values before update
+  const oldValues = { ...existing };
+
   store.updateBatchRecord(id, updates);
 
+  // Explicit audit trail logging with full old/new context
+  store.logAudit('UPDATE', 'BatchRecord', id, oldValues, updates);
+
   const updated = useQMSStore.getState().batchRecords.find(b => b.id === id);
-  return updated!;
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Batch record not found after update');
+  }
+  return updated;
+}
+
+/**
+ * Gets batch records filtered by organization.
+ */
+export function getBatchRecords(organizationId?: string): BatchRecord[] {
+  const store = useQMSStore.getState();
+  if (!organizationId) return store.batchRecords;
+  return store.batchRecords.filter(b => b.organizationId === organizationId);
 }
 
 // ============================================================================
@@ -329,7 +357,10 @@ export function releaseBatch(
   );
 
   const updated = useQMSStore.getState().batchRecords.find(b => b.id === batchId);
-  return updated!;
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Batch record not found after release');
+  }
+  return updated;
 }
 
 /**
@@ -376,7 +407,10 @@ export function rejectBatch(
   );
 
   const updated = useQMSStore.getState().batchRecords.find(b => b.id === batchId);
-  return updated!;
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Batch record not found after rejection');
+  }
+  return updated;
 }
 
 /**
@@ -412,5 +446,8 @@ export function quarantineBatch(batchId: string, reason: string): BatchRecord {
   );
 
   const updated = useQMSStore.getState().batchRecords.find(b => b.id === batchId);
-  return updated!;
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Batch record not found after quarantine');
+  }
+  return updated;
 }

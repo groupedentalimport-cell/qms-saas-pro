@@ -18,8 +18,11 @@ import type { Deviation } from '@/types/qms';
 export function createDeviation(deviation: Omit<Deviation, 'id' | 'createdAt' | 'updatedAt'>): Deviation {
   const store = useQMSStore.getState();
 
-  // Verify unique deviation number
-  const existing = store.deviations.find(d => d.devNumber === deviation.devNumber);
+  // Verify unique deviation number within organization
+  const orgFilter = deviation.organizationId
+    ? (d: Deviation) => d.organizationId === deviation.organizationId
+    : () => true;
+  const existing = store.deviations.find(d => d.devNumber === deviation.devNumber && orgFilter(d));
   if (existing) {
     throw new ComplianceError(
       `A deviation with number ${deviation.devNumber} already exists`,
@@ -28,7 +31,7 @@ export function createDeviation(deviation: Omit<Deviation, 'id' | 'createdAt' | 
   }
 
   // Planned deviations require justification
-  if (deviation.deviationType === 'Planned' && !deviation.justification) {
+  if (deviation.type === 'Planned' && !deviation.justification) {
     throw new ComplianceError(
       'Planned deviations require a justification',
       COMPLIANCE_CODES.REQUIRED_FIELD_MISSING
@@ -49,9 +52,9 @@ export function createDeviation(deviation: Omit<Deviation, 'id' | 'createdAt' | 
 /**
  * Updates a deviation with business rule validation.
  * - Validates status transitions
- * - Logs audit trail
+ * - Logs explicit audit trail with old/new values
  */
-export function updateDeviation(id: string, updates: Partial<Deviation>): Deviation {
+export function updateDeviation(id: string, updates: Partial<Deviation>, organizationId?: string): Deviation {
   const store = useQMSStore.getState();
   const existing = store.deviations.find(d => d.id === id);
 
@@ -62,15 +65,42 @@ export function updateDeviation(id: string, updates: Partial<Deviation>): Deviat
     );
   }
 
+  // Validate organization access
+  const effectiveOrgId = organizationId || existing.organizationId;
+  if (effectiveOrgId && existing.organizationId && existing.organizationId !== effectiveOrgId) {
+    throw new ComplianceError(
+      `Deviation ${id} does not belong to organization ${effectiveOrgId}`,
+      COMPLIANCE_CODES.INSUFFICIENT_PERMISSIONS
+    );
+  }
+
   // Validate status transition if status is changing
   if (updates.status && updates.status !== existing.status) {
     validateDeviationStatusTransition(existing.status, updates.status);
   }
 
+  // Capture old values before update
+  const oldValues = { ...existing };
+
   store.updateDeviation(id, updates);
 
+  // Explicit audit trail logging with full old/new context
+  store.logAudit('UPDATE', 'Deviation', id, oldValues, updates);
+
   const updated = useQMSStore.getState().deviations.find(d => d.id === id);
-  return updated!;
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Deviation not found after update');
+  }
+  return updated;
+}
+
+/**
+ * Gets deviations filtered by organization.
+ */
+export function getDeviations(organizationId?: string): Deviation[] {
+  const store = useQMSStore.getState();
+  if (!organizationId) return store.deviations;
+  return store.deviations.filter(d => d.organizationId === organizationId);
 }
 
 /**
@@ -102,8 +132,6 @@ export function approveDeviation(
 
   store.updateDeviation(id, {
     status: 'Approved',
-    qaApprovedById: qaUserId,
-    qaApprovalDate: new Date().toISOString(),
   });
 
   store.logAudit('APPROVE', 'Deviation', id,
@@ -111,7 +139,11 @@ export function approveDeviation(
     { status: 'Approved', approvedBy: qaUserName, signatureHash }
   );
 
-  return useQMSStore.getState().deviations.find(d => d.id === id)!;
+  const updated = useQMSStore.getState().deviations.find(d => d.id === id);
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Deviation not found after approval');
+  }
+  return updated;
 }
 
 // ============================================================================
@@ -119,13 +151,11 @@ export function approveDeviation(
 // ============================================================================
 
 const VALID_DEVIATION_TRANSITIONS: Record<string, string[]> = {
-  'Open': ['Under Investigation', 'Cancelled'],
+  'Open': ['Under Investigation'],
   'Under Investigation': ['Pending QA Review', 'Open'],
-  'Pending QA Review': ['Approved', 'Rejected', 'Under Investigation'],
+  'Pending QA Review': ['Approved', 'Under Investigation'],
   'Approved': ['Closed'],
-  'Rejected': ['Under Investigation'],
   'Closed': [],
-  'Cancelled': [],
 };
 
 function validateDeviationStatusTransition(current: string, target: string): void {

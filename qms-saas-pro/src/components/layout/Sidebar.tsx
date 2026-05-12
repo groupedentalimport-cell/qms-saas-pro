@@ -27,6 +27,7 @@ import {
   CheckCircle2,
   Settings,
   Users,
+  Building2,
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
@@ -104,9 +105,10 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-// Settings items — only visible with admin.users permission
+// Settings items — visible with appropriate admin permissions
 const SETTINGS_ITEMS: NavItem[] = [
   { id: 'user-management', labelKey: 'nav.userManagement', icon: Users, permission: 'admin.users' },
+  { id: 'organization-settings', labelKey: 'nav.organizationSettings', icon: Building2, permission: 'admin.settings' },
 ];
 
 // ---------------------------------------------------------------------------

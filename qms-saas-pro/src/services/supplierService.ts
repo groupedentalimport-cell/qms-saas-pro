@@ -14,12 +14,16 @@ import type { Supplier, SupplierStatus } from '@/types/qms';
  * Crée un nouveau fournisseur.
  * - Vérifie l'unicité du code fournisseur
  * - Vérifie le document de qualification si spécifié
+ * - Logs explicit audit trail
  */
 export function createSupplier(supplier: Omit<Supplier, 'id' | 'createdAt'>): Supplier {
   const store = useQMSStore.getState();
 
-  // Vérifier l'unicité du code fournisseur
-  const existing = store.suppliers.find(s => s.supplierCode === supplier.supplierCode);
+  // Vérifier l'unicité du code fournisseur within organization
+  const orgFilter = supplier.organizationId
+    ? (s: Supplier) => s.organizationId === supplier.organizationId
+    : () => true;
+  const existing = store.suppliers.find(s => s.supplierCode === supplier.supplierCode && orgFilter(s));
   if (existing) {
     throw new ComplianceError(
       `Un fournisseur avec le code ${supplier.supplierCode} existe déjà`,
@@ -51,13 +55,24 @@ export function createSupplier(supplier: Omit<Supplier, 'id' | 'createdAt'>): Su
   };
 
   store.addSupplier(newSupplier);
+
+  // Explicit audit trail logging
+  store.logAudit('CREATE', 'Supplier', newSupplier.id, undefined, {
+    supplierCode: newSupplier.supplierCode,
+    name: newSupplier.name,
+    status: newSupplier.status,
+    category: newSupplier.category,
+    organizationId: newSupplier.organizationId,
+  });
+
   return newSupplier;
 }
 
 /**
  * Met à jour un fournisseur.
+ * - Logs explicit audit trail with old/new values
  */
-export function updateSupplier(id: string, updates: Partial<Supplier>): Supplier {
+export function updateSupplier(id: string, updates: Partial<Supplier>, organizationId?: string): Supplier {
   const store = useQMSStore.getState();
   const existing = store.suppliers.find(s => s.id === id);
 
@@ -68,15 +83,42 @@ export function updateSupplier(id: string, updates: Partial<Supplier>): Supplier
     );
   }
 
+  // Validate organization access
+  const effectiveOrgId = organizationId || existing.organizationId;
+  if (effectiveOrgId && existing.organizationId && existing.organizationId !== effectiveOrgId) {
+    throw new ComplianceError(
+      `Supplier ${id} does not belong to organization ${effectiveOrgId}`,
+      COMPLIANCE_CODES.INSUFFICIENT_PERMISSIONS
+    );
+  }
+
   // Vérifier les transitions de statut valides
   if (updates.status && updates.status !== existing.status) {
     validateStatusTransition(existing.status, updates.status);
   }
 
+  // Capture old values before update
+  const oldValues = { ...existing };
+
   store.updateSupplier(id, updates);
 
+  // Explicit audit trail logging with full old/new context
+  store.logAudit('UPDATE', 'Supplier', id, oldValues, updates);
+
   const updated = useQMSStore.getState().suppliers.find(s => s.id === id);
-  return updated!;
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Supplier not found after update');
+  }
+  return updated;
+}
+
+/**
+ * Gets suppliers filtered by organization.
+ */
+export function getSuppliers(organizationId?: string): Supplier[] {
+  const store = useQMSStore.getState();
+  if (!organizationId) return store.suppliers;
+  return store.suppliers.filter(s => s.organizationId === organizationId);
 }
 
 /**
@@ -116,7 +158,10 @@ export function disqualifySupplier(id: string, reason: string): Supplier {
   );
 
   const updated = useQMSStore.getState().suppliers.find(s => s.id === id);
-  return updated!;
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Supplier not found after disqualification');
+  }
+  return updated;
 }
 
 // ============================================================================
@@ -198,9 +243,12 @@ export function refreshPerformanceScore(supplierId: string): Supplier {
 /**
  * Calcule les scores de performance pour tous les fournisseurs.
  */
-export function refreshAllPerformanceScores(): void {
+export function refreshAllPerformanceScores(organizationId?: string): void {
   const store = useQMSStore.getState();
-  for (const supplier of store.suppliers) {
+  const suppliers = organizationId
+    ? store.suppliers.filter(s => s.organizationId === organizationId)
+    : store.suppliers;
+  for (const supplier of suppliers) {
     const score = calculatePerformanceScore(supplier.id);
     store.updateSupplier(supplier.id, { performanceScore: score });
   }

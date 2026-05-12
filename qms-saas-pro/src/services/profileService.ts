@@ -15,6 +15,7 @@ import { isUserRole } from '@/types/qms';
  * Creates a new user profile.
  * - Validates email uniqueness
  * - Validates role
+ * - Logs explicit audit trail
  */
 export function createProfile(profile: Omit<Profile, 'id' | 'createdAt' | 'updatedAt'>): Profile {
   const store = useQMSStore.getState();
@@ -44,13 +45,22 @@ export function createProfile(profile: Omit<Profile, 'id' | 'createdAt' | 'updat
   };
 
   store.addProfile(newProfile);
+
+  // Explicit audit trail logging
+  store.logAudit('CREATE', 'Profile', newProfile.id, undefined, {
+    email: newProfile.email,
+    fullName: newProfile.fullName,
+    role: newProfile.role,
+    department: newProfile.department,
+  });
+
   return newProfile;
 }
 
 /**
  * Updates a user profile with business rule validation.
  * - Validates role if changing
- * - Logs audit trail
+ * - Logs explicit audit trail with old/new values
  */
 export function updateProfile(id: string, updates: Partial<Profile>): Profile {
   const store = useQMSStore.getState();
@@ -82,10 +92,19 @@ export function updateProfile(id: string, updates: Partial<Profile>): Profile {
     }
   }
 
+  // Capture old values before update
+  const oldValues = { ...existing };
+
   store.updateProfile(id, updates);
 
+  // Explicit audit trail logging with full old/new context
+  store.logAudit('UPDATE', 'Profile', id, oldValues, updates);
+
   const updated = useQMSStore.getState().profiles.find(p => p.id === id);
-  return updated!;
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Profile not found after update');
+  }
+  return updated;
 }
 
 /**
@@ -97,9 +116,13 @@ export function getProfile(id: string): Profile | undefined {
 }
 
 /**
- * Gets all profiles.
+ * Gets all profiles, optionally filtered by organization.
+ * Note: Profile type does not have organizationId, so this returns
+ * all profiles. Organization filtering is handled at the application layer.
  */
-export function getAllProfiles(): Profile[] {
+export function getAllProfiles(organizationId?: string): Profile[] {
   const store = useQMSStore.getState();
+  // Profile type doesn't have organizationId field
+  // Return all profiles; org filtering is handled elsewhere
   return store.profiles;
 }

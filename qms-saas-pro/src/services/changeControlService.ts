@@ -4,7 +4,7 @@
 
 import { useQMSStore } from '@/lib/demo-store';
 import { ComplianceError, COMPLIANCE_CODES } from '@/lib/errors';
-import { checkPrerequisites } from '@/services/prerequisiteService';
+import { checkPrerequisites } from '@/services/compliance/prerequisiteEngine';
 import type { ChangeControl } from '@/types/qms';
 
 // ============================================================================
@@ -28,8 +28,11 @@ export function createChangeControl(cc: Omit<ChangeControl, 'id' | 'createdAt' |
     );
   }
 
-  // Verify unique CC number
-  const existing = store.changeControls.find(c => c.ccNumber === cc.ccNumber);
+  // Verify unique CC number within organization
+  const orgFilter = cc.organizationId
+    ? (c: ChangeControl) => c.organizationId === cc.organizationId
+    : () => true;
+  const existing = store.changeControls.find(c => c.ccNumber === cc.ccNumber && orgFilter(c));
   if (existing) {
     throw new ComplianceError(
       `A Change Control with number ${cc.ccNumber} already exists`,
@@ -51,9 +54,9 @@ export function createChangeControl(cc: Omit<ChangeControl, 'id' | 'createdAt' |
 /**
  * Updates a Change Control with business rule validation.
  * - Validates status transitions
- * - Logs audit trail
+ * - Logs explicit audit trail with old/new values
  */
-export function updateChangeControl(id: string, updates: Partial<ChangeControl>): ChangeControl {
+export function updateChangeControl(id: string, updates: Partial<ChangeControl>, organizationId?: string): ChangeControl {
   const store = useQMSStore.getState();
   const existing = store.changeControls.find(c => c.id === id);
 
@@ -64,15 +67,42 @@ export function updateChangeControl(id: string, updates: Partial<ChangeControl>)
     );
   }
 
+  // Validate organization access
+  const effectiveOrgId = organizationId || existing.organizationId;
+  if (effectiveOrgId && existing.organizationId && existing.organizationId !== effectiveOrgId) {
+    throw new ComplianceError(
+      `Change Control ${id} does not belong to organization ${effectiveOrgId}`,
+      COMPLIANCE_CODES.INSUFFICIENT_PERMISSIONS
+    );
+  }
+
   // Validate status transition if status is changing
   if (updates.status && updates.status !== existing.status) {
     validateCCStatusTransition(existing.status, updates.status);
   }
 
+  // Capture old values before update
+  const oldValues = { ...existing };
+
   store.updateChangeControl(id, updates);
 
+  // Explicit audit trail logging with full old/new context
+  store.logAudit('UPDATE', 'ChangeControl', id, oldValues, updates);
+
   const updated = useQMSStore.getState().changeControls.find(c => c.id === id);
-  return updated!;
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Change Control not found after update');
+  }
+  return updated;
+}
+
+/**
+ * Gets change controls filtered by organization.
+ */
+export function getChangeControls(organizationId?: string): ChangeControl[] {
+  const store = useQMSStore.getState();
+  if (!organizationId) return store.changeControls;
+  return store.changeControls.filter(c => c.organizationId === organizationId);
 }
 
 /**
@@ -93,9 +123,9 @@ export function approveChangeControl(
     );
   }
 
-  if (existing.status !== 'Pending Approval') {
+  if (existing.status !== 'Under Review') {
     throw new ComplianceError(
-      `Change Control ${existing.ccNumber} must be in "Pending Approval" status to approve (current: ${existing.status})`,
+      `Change Control ${existing.ccNumber} must be in "Under Review" status to approve (current: ${existing.status})`,
       COMPLIANCE_CODES.INVALID_STATUS_TRANSITION
     );
   }
@@ -104,8 +134,7 @@ export function approveChangeControl(
 
   store.updateChangeControl(id, {
     status: 'Approved',
-    approvedById: signerId,
-    approvalDate: new Date().toISOString(),
+    approvedBy: signerId,
   });
 
   store.logAudit('APPROVE', 'ChangeControl', id,
@@ -113,7 +142,11 @@ export function approveChangeControl(
     { status: 'Approved', approvedBy: signerName, signatureHash }
   );
 
-  return useQMSStore.getState().changeControls.find(c => c.id === id)!;
+  const updated = useQMSStore.getState().changeControls.find(c => c.id === id);
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Change Control not found after approval');
+  }
+  return updated;
 }
 
 /**
@@ -135,9 +168,9 @@ export function rejectChangeControl(
     );
   }
 
-  if (existing.status !== 'Pending Approval') {
+  if (existing.status !== 'Under Review') {
     throw new ComplianceError(
-      `Change Control ${existing.ccNumber} must be in "Pending Approval" status to reject (current: ${existing.status})`,
+      `Change Control ${existing.ccNumber} must be in "Under Review" status to reject (current: ${existing.status})`,
       COMPLIANCE_CODES.INVALID_STATUS_TRANSITION
     );
   }
@@ -149,7 +182,11 @@ export function rejectChangeControl(
     { status: 'Rejected', rejectedBy: rejecterName, reason }
   );
 
-  return useQMSStore.getState().changeControls.find(c => c.id === id)!;
+  const updated = useQMSStore.getState().changeControls.find(c => c.id === id);
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Change Control not found after rejection');
+  }
+  return updated;
 }
 
 // ============================================================================
@@ -157,13 +194,12 @@ export function rejectChangeControl(
 // ============================================================================
 
 const VALID_CC_TRANSITIONS: Record<string, string[]> = {
-  'Draft': ['Pending Approval', 'Cancelled'],
-  'Pending Approval': ['Approved', 'Rejected', 'Draft'],
-  'Approved': ['In Implementation', 'Cancelled'],
-  'In Implementation': ['Completed', 'Cancelled'],
+  'Requested': ['Under Review', 'Rejected'],
+  'Under Review': ['Approved', 'Rejected', 'Requested'],
+  'Approved': ['In Implementation'],
+  'In Implementation': ['Completed', 'Approved'],
   'Completed': [],
-  'Rejected': ['Draft'],
-  'Cancelled': [],
+  'Rejected': ['Requested'],
 };
 
 function validateCCStatusTransition(current: string, target: string): void {

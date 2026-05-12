@@ -18,8 +18,11 @@ import type { Risk, RiskLevel } from '@/types/qms';
 export function createRisk(risk: Omit<Risk, 'id' | 'createdAt' | 'updatedAt'>): Risk {
   const store = useQMSStore.getState();
 
-  // Verify unique risk number
-  const existing = store.risks.find(r => r.riskNumber === risk.riskNumber);
+  // Verify unique risk number within organization
+  const orgFilter = risk.organizationId
+    ? (r: Risk) => r.organizationId === risk.organizationId
+    : () => true;
+  const existing = store.risks.find(r => r.riskNumber === risk.riskNumber && orgFilter(r));
   if (existing) {
     throw new ComplianceError(
       `A risk with number ${risk.riskNumber} already exists`,
@@ -46,8 +49,9 @@ export function createRisk(risk: Omit<Risk, 'id' | 'createdAt' | 'updatedAt'>): 
  * Updates a risk assessment with business rule validation.
  * - Recalculates risk level if RPN changes
  * - Validates status transitions
+ * - Logs explicit audit trail with old/new values
  */
-export function updateRisk(id: string, updates: Partial<Risk>): Risk {
+export function updateRisk(id: string, updates: Partial<Risk>, organizationId?: string): Risk {
   const store = useQMSStore.getState();
   const existing = store.risks.find(r => r.id === id);
 
@@ -57,6 +61,18 @@ export function updateRisk(id: string, updates: Partial<Risk>): Risk {
       COMPLIANCE_CODES.REQUIRED_FIELD_MISSING
     );
   }
+
+  // Validate organization access
+  const effectiveOrgId = organizationId || existing.organizationId;
+  if (effectiveOrgId && existing.organizationId && existing.organizationId !== effectiveOrgId) {
+    throw new ComplianceError(
+      `Risk ${id} does not belong to organization ${effectiveOrgId}`,
+      COMPLIANCE_CODES.INSUFFICIENT_PERMISSIONS
+    );
+  }
+
+  // Capture old values before update
+  const oldValues = { ...existing };
 
   // Recalculate risk level if RPN changes
   if (updates.rpn !== undefined && !updates.riskLevel) {
@@ -70,8 +86,34 @@ export function updateRisk(id: string, updates: Partial<Risk>): Risk {
 
   store.updateRisk(id, updates);
 
+  // Explicit audit trail logging with full old/new context
+  store.logAudit('UPDATE', 'Risk', id, oldValues, updates);
+
   const updated = useQMSStore.getState().risks.find(r => r.id === id);
-  return updated!;
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Risk not found after update');
+  }
+  return updated;
+}
+
+/**
+ * Gets risks filtered by organization.
+ */
+export function getRisks(organizationId?: string): Risk[] {
+  const store = useQMSStore.getState();
+  if (!organizationId) return store.risks;
+  return store.risks.filter(r => r.organizationId === organizationId);
+}
+
+/**
+ * Gets a risk by ID with optional organization filter.
+ */
+export function getRisk(id: string, organizationId?: string): Risk | undefined {
+  const store = useQMSStore.getState();
+  const risk = store.risks.find(r => r.id === id);
+  if (!risk) return undefined;
+  if (organizationId && risk.organizationId && risk.organizationId !== organizationId) return undefined;
+  return risk;
 }
 
 // ============================================================================

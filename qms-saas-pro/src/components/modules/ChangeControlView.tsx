@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useQMSStore } from '@/lib/demo-store';
 import { useAuth } from '@/contexts/AuthContext';
 import { createChangeControl, updateChangeControl } from '@/services/changeControlService';
-import { checkPrerequisites } from '@/services/prerequisiteService';
+import { checkPrerequisites } from '@/services/compliance/prerequisiteEngine';
 import type {
   ChangeControl, ChangeControlStatus, ChangeControlType,
   ChangeControlPriority, ChangeControlCategory, SignatureType, ElectronicSignature,

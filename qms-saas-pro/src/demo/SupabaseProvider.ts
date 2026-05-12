@@ -24,17 +24,18 @@ import type {
   ElectronicSignature,
   OrgSettings,
 } from '@/types/qms';
+import { ComplianceError, COMPLIANCE_CODES } from '@/lib/errors';
 
 // ============================================================================
-// Configuration Error Message
+// Configuration Error Handler
 // ============================================================================
-
-const NOT_CONFIGURED_MESSAGE =
-  'Supabase backend is not configured. To enable Supabase, set the VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables. ' +
-  'The application is currently running in demo mode with in-memory data.';
 
 function throwNotConfigured(): never {
-  throw new Error(NOT_CONFIGURED_MESSAGE);
+  throw new ComplianceError(
+    'Supabase backend is not configured. To enable Supabase, set the VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables. ' +
+    'The application is currently running in demo mode with in-memory data.',
+    COMPLIANCE_CODES.BACKEND_NOT_CONFIGURED
+  );
 }
 
 // ============================================================================

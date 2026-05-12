@@ -2,7 +2,7 @@
 // Gère le cycle de vie des documents : création, approbation, hiérarchie, validation IQ/OQ/PQ
 // Règles métier : soft delete, document verrouillé si Approved, séquence IQ→OQ→PQ
 
-import { useQMSStore } from '@/lib/demo-store';
+import { getStore } from '@/lib/data-access';
 import { ComplianceError, COMPLIANCE_CODES } from '@/lib/errors';
 import type { Document, DocumentStatus, ValidationPhase, ElectronicSignature, SignatureType } from '@/types/qms';
 
@@ -16,7 +16,7 @@ import type { Document, DocumentStatus, ValidationPhase, ElectronicSignature, Si
  * - Vérifie que le document parent (si défini) existe et est Approved
  */
 export function createDocument(doc: Omit<Document, 'id' | 'createdAt' | 'updatedAt'>): Document {
-  const store = useQMSStore.getState();
+  const store = getStore();
 
   // Vérifier l'unicité du numéro de document
   const existing = store.documents.find(d => d.documentNumber === doc.documentNumber);
@@ -72,7 +72,7 @@ export function updateDocument(
   updates: Partial<Document>,
   allowStatusChangeOnly: boolean = false
 ): Document {
-  const store = useQMSStore.getState();
+  const store = getStore();
   const existing = store.documents.find(d => d.id === id);
 
   if (!existing) {
@@ -100,8 +100,11 @@ export function updateDocument(
 
   store.updateDocument(id, updates);
 
-  const updated = useQMSStore.getState().documents.find(d => d.id === id);
-  return updated!;
+  const updated = getStore().documents.find(d => d.id === id);
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Document not found after update');
+  }
+  return updated;
 }
 
 /**
@@ -109,7 +112,7 @@ export function updateDocument(
  * Ne supprime JAMAIS physiquement l'enregistrement (spec §5.2).
  */
 export function softDeleteDocument(id: string, reason?: string): Document {
-  const store = useQMSStore.getState();
+  const store = getStore();
   const existing = store.documents.find(d => d.id === id);
 
   if (!existing) {
@@ -161,7 +164,7 @@ export function signDocument(
   signatureType: SignatureType,
   reason?: string
 ): ElectronicSignature {
-  const store = useQMSStore.getState();
+  const store = getStore();
   const doc = store.documents.find(d => d.id === documentId);
 
   if (!doc) {
@@ -252,7 +255,7 @@ export function signDocument(
  * Règle : IQ doit être Approved avant OQ, OQ avant PQ (spec §5.2)
  */
 function validateValidationSequence(doc: Document): void {
-  const store = useQMSStore.getState();
+  const store = getStore();
 
   if (!doc.validationPhase || !doc.parentValidationId) return;
 
@@ -326,7 +329,7 @@ export interface HierarchyNode {
  * Utilise buildTree(docs, parentId=null) récursif côté client (spec §5.2)
  */
 export function buildHierarchyTree(documents?: Document[]): HierarchyNode[] {
-  const store = useQMSStore.getState();
+  const store = getStore();
   const docs = documents || store.documents;
 
   const buildTree = (parentId: string | null | undefined, level: number): HierarchyNode[] => {
@@ -347,7 +350,7 @@ export function buildHierarchyTree(documents?: Document[]): HierarchyNode[] {
  * Récupère tous les documents enfants d'un document (récursif).
  */
 export function getDocumentDescendants(parentId: string): Document[] {
-  const store = useQMSStore.getState();
+  const store = getStore();
   const children = store.documents.filter(d => d.parentDocumentId === parentId);
   const descendants: Document[] = [...children];
 
@@ -362,7 +365,7 @@ export function getDocumentDescendants(parentId: string): Document[] {
  * Récupère tous les documents ancêtres d'un document (récursif vers le haut).
  */
 export function getDocumentAncestors(documentId: string): Document[] {
-  const store = useQMSStore.getState();
+  const store = getStore();
   const ancestors: Document[] = [];
   let current: Document | undefined = store.documents.find(d => d.id === documentId);
 
@@ -385,7 +388,7 @@ export function detectCascadeAlerts(): Array<{
   blockingRecords: Array<{ type: string; id: string; number: string; title: string }>;
   recommendedAction: string;
 }> {
-  const store = useQMSStore.getState();
+  const store = getStore();
   const alerts: Array<{
     document: Document;
     blockingRecords: Array<{ type: string; id: string; number: string; title: string }>;
@@ -435,7 +438,7 @@ export function detectCascadeAlerts(): Array<{
  * Utilisé pour les dropdowns et les vérifications de prérequis.
  */
 export function getApprovedDocuments(docType?: string): Document[] {
-  const store = useQMSStore.getState();
+  const store = getStore();
   let docs = store.documents.filter(d => d.status === 'Approved');
 
   if (docType) {

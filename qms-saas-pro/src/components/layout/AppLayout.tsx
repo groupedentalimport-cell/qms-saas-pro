@@ -3,7 +3,11 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { cn } from '@/lib/utils';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { SupabaseAuthProvider } from '@/contexts/SupabaseAuthContext';
+import { isSupabaseConfigured } from '@/lib/supabase/mode';
 import { OrganizationProvider, useOrganization } from '@/contexts/OrganizationContext';
+import { QueryProvider } from '@/providers/QueryProvider';
+import { ThemeProvider } from '@/providers/ThemeProvider';
 import { SetupWizard } from '@/components/setup/SetupWizard';
 import { GlobalSearch } from '@/components/shared/GlobalSearch';
 import { useI18n } from '@/lib/i18n';
@@ -208,12 +212,24 @@ function AppLayoutInner() {
   );
 }
 
+/** Resolves to SupabaseAuthProvider when Supabase is configured, else demo AuthProvider */
+function AuthProviderWrapper({ children }: { children: React.ReactNode }) {
+  if (isSupabaseConfigured()) {
+    return <SupabaseAuthProvider>{children}</SupabaseAuthProvider>;
+  }
+  return <AuthProvider>{children}</AuthProvider>;
+}
+
 export function AppLayout() {
   return (
-    <AuthProvider>
-      <OrganizationProvider>
-        <AppLayoutInner />
-      </OrganizationProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <QueryProvider>
+        <AuthProviderWrapper>
+          <OrganizationProvider>
+            <AppLayoutInner />
+          </OrganizationProvider>
+        </AuthProviderWrapper>
+      </QueryProvider>
+    </ThemeProvider>
   );
 }

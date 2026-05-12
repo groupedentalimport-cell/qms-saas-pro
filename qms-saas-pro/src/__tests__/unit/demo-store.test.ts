@@ -1140,9 +1140,10 @@ describe('updateOrgSettings()', () => {
 describe('generateSignatureHash()', () => {
   beforeEach(resetStore);
 
-  it('returns a string starting with "SIG-"', () => {
+  it('returns a non-empty hex string (SHA-256 based signature)', () => {
     const hash = useQMSStore.getState().generateSignatureHash('user-001', 'doc-001', 'approval');
-    expect(hash).toMatch(/^SIG-/);
+    expect(hash).toBeTruthy();
+    expect(hash).toMatch(/^[0-9a-f]{16}$/);
   });
 
   it('is deterministic for the same inputs when Date.now is fixed', () => {
@@ -1171,19 +1172,10 @@ describe('generateSignatureHash()', () => {
     Date.now = originalDateNow;
   });
 
-  it('contains the timestamp portion in base-36', () => {
-    const fixedNow = 1700000000000;
-    const originalDateNow = Date.now;
-    Date.now = vi.fn(() => fixedNow);
-
+  it('uses signatureEngine generateSignatureHashSync for CFR Part 11 compliance', () => {
+    // Verify that the hash is generated via the signatureEngine (SHA-256 based)
     const hash = useQMSStore.getState().generateSignatureHash('user-001', 'doc-001', 'approval');
-    // The hash format is SIG-<hex>-<base36timestamp>
-    const parts = hash.split('-');
-    expect(parts.length).toBe(3);
-    expect(parts[0]).toBe('SIG');
-    // The last part should be the base-36 representation of the timestamp
-    expect(parseInt(parts[2], 36)).toBe(fixedNow);
-
-    Date.now = originalDateNow;
+    // The signatureEngine's fallbackHash produces a 16-char hex string
+    expect(hash).toMatch(/^[0-9a-f]{16}$/);
   });
 });

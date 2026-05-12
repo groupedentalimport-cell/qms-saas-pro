@@ -2,9 +2,9 @@
 // Manages NCR lifecycle: creation, investigation, disposition, closure
 // Business rules: prerequisite checks, status transitions, e-signature for closure
 
-import { useQMSStore } from '@/lib/demo-store';
+import { getStore } from '@/lib/data-access';
 import { ComplianceError, COMPLIANCE_CODES } from '@/lib/errors';
-import { checkPrerequisites } from '@/services/prerequisiteService';
+import { checkPrerequisites } from '@/services/compliance/prerequisiteEngine';
 import type { NonConformance, NcrDisposition } from '@/types/qms';
 
 // ============================================================================
@@ -17,7 +17,7 @@ import type { NonConformance, NcrDisposition } from '@/types/qms';
  * - Validates unique NCR number
  */
 export function createNCR(ncr: Omit<NonConformance, 'id' | 'createdAt' | 'updatedAt'>): NonConformance {
-  const store = useQMSStore.getState();
+  const store = getStore();
 
   // Check prerequisites
   const prereqResult = checkPrerequisites('NCR', ncr.organizationId);
@@ -51,10 +51,10 @@ export function createNCR(ncr: Omit<NonConformance, 'id' | 'createdAt' | 'update
 /**
  * Updates an NCR with business rule validation.
  * - Validates status transitions
- * - Logs audit trail
+ * - Logs explicit audit trail with old/new values
  */
-export function updateNCR(id: string, updates: Partial<NonConformance>): NonConformance {
-  const store = useQMSStore.getState();
+export function updateNCR(id: string, updates: Partial<NonConformance>, organizationId?: string): NonConformance {
+  const store = getStore();
   const existing = store.ncrs.find(n => n.id === id);
 
   if (!existing) {
@@ -64,15 +64,42 @@ export function updateNCR(id: string, updates: Partial<NonConformance>): NonConf
     );
   }
 
+  // Validate organization access
+  const effectiveOrgId = organizationId || existing.organizationId;
+  if (effectiveOrgId && existing.organizationId && existing.organizationId !== effectiveOrgId) {
+    throw new ComplianceError(
+      `NCR ${id} does not belong to organization ${effectiveOrgId}`,
+      COMPLIANCE_CODES.INSUFFICIENT_PERMISSIONS
+    );
+  }
+
   // Validate status transition if status is changing
   if (updates.status && updates.status !== existing.status) {
     validateNcrStatusTransition(existing.status, updates.status);
   }
 
+  // Capture old values before update
+  const oldValues = { ...existing };
+
   store.updateNCR(id, updates);
 
-  const updated = useQMSStore.getState().ncrs.find(n => n.id === id);
-  return updated!;
+  // Explicit audit trail logging with full old/new context
+  store.logAudit('UPDATE', 'NonConformance', id, oldValues, updates);
+
+  const updated = getStore().ncrs.find(n => n.id === id);
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'NCR not found after update');
+  }
+  return updated;
+}
+
+/**
+ * Gets NCRs filtered by organization.
+ */
+export function getNCRs(organizationId?: string): NonConformance[] {
+  const store = getStore();
+  if (!organizationId) return store.ncrs;
+  return store.ncrs.filter(n => n.organizationId === organizationId);
 }
 
 /**
@@ -86,7 +113,7 @@ export function closeNCR(
   signerId: string,
   signerName: string
 ): NonConformance {
-  const store = useQMSStore.getState();
+  const store = getStore();
   const existing = store.ncrs.find(n => n.id === id);
 
   if (!existing) {
@@ -108,8 +135,6 @@ export function closeNCR(
   store.updateNCR(id, {
     status: 'Closed',
     disposition,
-    closedAt: new Date().toISOString(),
-    closedById: signerId,
   });
 
   store.logAudit('APPROVE', 'NonConformance', id,
@@ -117,8 +142,11 @@ export function closeNCR(
     { status: 'Closed', disposition, closedBy: signerName, signatureHash }
   );
 
-  const updated = useQMSStore.getState().ncrs.find(n => n.id === id);
-  return updated!;
+  const updated = getStore().ncrs.find(n => n.id === id);
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'NCR not found after closure');
+  }
+  return updated;
 }
 
 // ============================================================================

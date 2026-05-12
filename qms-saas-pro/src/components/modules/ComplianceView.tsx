@@ -118,7 +118,7 @@ function MetricBar({ label, value, color }: { label: string; value: number; colo
 export function ComplianceView() {
   const store = useQMSStore();
   const { hasPermission } = useAuth();
-  const { orgSettings } = useOrganization();
+  const { currentOrg, orgSettings } = useOrganization();
 
   const documents = store.documents;
   const capas = store.capas;
@@ -233,7 +233,7 @@ export function ComplianceView() {
   // Recent audit activity for Tab 1
   // -------------------------------------------------------------------------
 
-  const auditTrailStats = useMemo(() => getAuditTrailStats('org-001'), [store.auditTrails]);
+  const auditTrailStats = useMemo(() => getAuditTrailStats(currentOrg?.id || ''), [store.auditTrails, currentOrg?.id]);
 
   const recentAuditActivity = useMemo(() => {
     return auditTrailStats.recentActivity.slice(0, 8);
@@ -255,8 +255,8 @@ export function ComplianceView() {
     searchQuery: auditFilterSearch || undefined,
     dateFrom: auditFilterDateFrom || undefined,
     dateTo: auditFilterDateTo || undefined,
-    organizationId: 'org-001',
-  }), [auditFilterAction, auditFilterTable, auditFilterSearch, auditFilterDateFrom, auditFilterDateTo]);
+    organizationId: currentOrg?.id || '',
+  }), [auditFilterAction, auditFilterTable, auditFilterSearch, auditFilterDateFrom, auditFilterDateTo, currentOrg?.id]);
 
   const auditTrailResult = useMemo(() => queryAuditTrail(auditTrailFilter, 1, 100), [auditTrailFilter, store.auditTrails]);
 

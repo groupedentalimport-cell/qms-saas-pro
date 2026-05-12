@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useQMSStore } from '@/lib/demo-store';
 import { useAuth } from '@/contexts/AuthContext';
 import { createCapa, updateCapa } from '@/services/capaService';
-import { checkPrerequisites } from '@/services/prerequisiteService';
+import { checkPrerequisites } from '@/services/compliance/prerequisiteEngine';
 import type { Capa, CapaStatus, CapaType, CapaPriority, CapaSource, RootCauseCategory } from '@/types/qms';
 import {
   Shield, Plus, Search, Eye, ArrowRight, CheckCircle2, AlertTriangle,

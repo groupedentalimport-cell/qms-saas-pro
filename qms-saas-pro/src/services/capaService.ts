@@ -2,9 +2,9 @@
 // Manages CAPA lifecycle: creation, investigation, effectiveness check, closure
 // Business rules: prerequisite checks, status transitions, e-signature for closure
 
-import { useQMSStore } from '@/lib/demo-store';
+import { getStore } from '@/lib/data-access';
 import { ComplianceError, COMPLIANCE_CODES } from '@/lib/errors';
-import { checkPrerequisites } from '@/services/prerequisiteService';
+import { checkPrerequisites } from '@/services/compliance/prerequisiteEngine';
 import type { Capa } from '@/types/qms';
 
 // ============================================================================
@@ -17,7 +17,7 @@ import type { Capa } from '@/types/qms';
  * - Validates unique CAPA number
  */
 export function createCapa(capa: Omit<Capa, 'id' | 'createdAt' | 'updatedAt'>): Capa {
-  const store = useQMSStore.getState();
+  const store = getStore();
 
   // Check prerequisites
   const prereqResult = checkPrerequisites('CAPA', capa.organizationId);
@@ -51,10 +51,10 @@ export function createCapa(capa: Omit<Capa, 'id' | 'createdAt' | 'updatedAt'>): 
 /**
  * Updates a CAPA with business rule validation.
  * - Validates status transitions
- * - Logs audit trail
+ * - Logs explicit audit trail with old/new values
  */
-export function updateCapa(id: string, updates: Partial<Capa>): Capa {
-  const store = useQMSStore.getState();
+export function updateCapa(id: string, updates: Partial<Capa>, organizationId?: string): Capa {
+  const store = getStore();
   const existing = store.capas.find(c => c.id === id);
 
   if (!existing) {
@@ -64,15 +64,42 @@ export function updateCapa(id: string, updates: Partial<Capa>): Capa {
     );
   }
 
+  // Validate organization access
+  const effectiveOrgId = organizationId || existing.organizationId;
+  if (effectiveOrgId && existing.organizationId && existing.organizationId !== effectiveOrgId) {
+    throw new ComplianceError(
+      `CAPA ${id} does not belong to organization ${effectiveOrgId}`,
+      COMPLIANCE_CODES.INSUFFICIENT_PERMISSIONS
+    );
+  }
+
   // Validate status transition if status is changing
   if (updates.status && updates.status !== existing.status) {
     validateCapaStatusTransition(existing.status, updates.status);
   }
 
+  // Capture old values before update
+  const oldValues = { ...existing };
+
   store.updateCapa(id, updates);
 
-  const updated = useQMSStore.getState().capas.find(c => c.id === id);
-  return updated!;
+  // Explicit audit trail logging with full old/new context
+  store.logAudit('UPDATE', 'Capa', id, oldValues, updates);
+
+  const updated = getStore().capas.find(c => c.id === id);
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'CAPA not found after update');
+  }
+  return updated;
+}
+
+/**
+ * Gets CAPAs filtered by organization.
+ */
+export function getCapas(organizationId?: string): Capa[] {
+  const store = getStore();
+  if (!organizationId) return store.capas;
+  return store.capas.filter(c => c.organizationId === organizationId);
 }
 
 /**
@@ -84,7 +111,7 @@ export function closeCapa(
   signerId: string,
   signerName: string
 ): Capa {
-  const store = useQMSStore.getState();
+  const store = getStore();
   const existing = store.capas.find(c => c.id === id);
 
   if (!existing) {
@@ -105,8 +132,7 @@ export function closeCapa(
 
   store.updateCapa(id, {
     status: 'Closed',
-    closedAt: new Date().toISOString(),
-    closedById: signerId,
+    closedDate: new Date().toISOString(),
   });
 
   store.logAudit('APPROVE', 'Capa', id,
@@ -114,8 +140,11 @@ export function closeCapa(
     { status: 'Closed', closedBy: signerName, signatureHash }
   );
 
-  const updated = useQMSStore.getState().capas.find(c => c.id === id);
-  return updated!;
+  const updated = getStore().capas.find(c => c.id === id);
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'CAPA not found after closure');
+  }
+  return updated;
 }
 
 // ============================================================================
@@ -123,10 +152,10 @@ export function closeCapa(
 // ============================================================================
 
 const VALID_CAPA_TRANSITIONS: Record<string, string[]> = {
-  'Open': ['Under Investigation', 'Closed'],
-  'Under Investigation': ['Corrective Action', 'Closed'],
-  'Corrective Action': ['Effectiveness Check', 'Under Investigation'],
-  'Effectiveness Check': ['Closed', 'Under Investigation'],
+  'Open': ['Investigation', 'Closed'],
+  'Investigation': ['Implementation', 'Closed'],
+  'Implementation': ['Effectiveness Check', 'Investigation'],
+  'Effectiveness Check': ['Closed', 'Investigation'],
   'Closed': [],
 };
 

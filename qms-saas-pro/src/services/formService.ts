@@ -306,7 +306,10 @@ export function submitFormInstance(
   );
 
   const updated = useQMSStore.getState().formInstances.find(i => i.id === instanceId);
-  return updated!;
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Form instance not found after submit');
+  }
+  return updated;
 }
 
 /**
@@ -346,7 +349,10 @@ export function approveFormInstance(
   );
 
   const updated = useQMSStore.getState().formInstances.find(i => i.id === instanceId);
-  return updated!;
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Form instance not found after approval');
+  }
+  return updated;
 }
 
 /**
@@ -385,7 +391,10 @@ export function rejectFormInstance(
   );
 
   const updated = useQMSStore.getState().formInstances.find(i => i.id === instanceId);
-  return updated!;
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Form instance not found after rejection');
+  }
+  return updated;
 }
 
 /**
@@ -424,5 +433,8 @@ export function updateFormInstanceValues(
   store.updateFormInstance(instanceId, { values: updatedValues });
 
   const updated = useQMSStore.getState().formInstances.find(i => i.id === instanceId);
-  return updated!;
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Form instance not found after values update');
+  }
+  return updated;
 }

@@ -24,6 +24,7 @@ export function pathToSection(path: string): ActiveSection {
     'reports': 'reports',
     'compliance': 'compliance',
     'user-management': 'user-management',
+    'organization-settings': 'organization-settings',
   };
   return map[path] || 'dashboard';
 }
@@ -54,6 +55,7 @@ export default function App() {
         <Route path="reports" element={<DashboardContent activeSection="reports" />} />
         <Route path="compliance" element={<DashboardContent activeSection="compliance" />} />
         <Route path="user-management" element={<DashboardContent activeSection="user-management" />} />
+        <Route path="organization-settings" element={<DashboardContent activeSection="organization-settings" />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

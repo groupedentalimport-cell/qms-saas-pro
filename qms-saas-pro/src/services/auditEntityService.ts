@@ -4,7 +4,7 @@
 
 import { useQMSStore } from '@/lib/demo-store';
 import { ComplianceError, COMPLIANCE_CODES } from '@/lib/errors';
-import { checkPrerequisites } from '@/services/prerequisiteService';
+import { checkPrerequisites } from '@/services/compliance/prerequisiteEngine';
 import type { Audit, AuditFinding } from '@/types/qms';
 
 // ============================================================================
@@ -51,9 +51,9 @@ export function createAudit(audit: Omit<Audit, 'id' | 'createdAt' | 'updatedAt'>
 /**
  * Updates an Audit with business rule validation.
  * - Validates status transitions
- * - Logs audit trail
+ * - Logs explicit audit trail with old/new values
  */
-export function updateAudit(id: string, updates: Partial<Audit>): Audit {
+export function updateAudit(id: string, updates: Partial<Audit>, organizationId?: string): Audit {
   const store = useQMSStore.getState();
   const existing = store.audits.find(a => a.id === id);
 
@@ -64,15 +64,42 @@ export function updateAudit(id: string, updates: Partial<Audit>): Audit {
     );
   }
 
+  // Validate organization access
+  const effectiveOrgId = organizationId || existing.organizationId;
+  if (effectiveOrgId && existing.organizationId && existing.organizationId !== effectiveOrgId) {
+    throw new ComplianceError(
+      `Audit ${id} does not belong to organization ${effectiveOrgId}`,
+      COMPLIANCE_CODES.INSUFFICIENT_PERMISSIONS
+    );
+  }
+
   // Validate status transition if status is changing
   if (updates.status && updates.status !== existing.status) {
     validateAuditStatusTransition(existing.status, updates.status);
   }
 
+  // Capture old values before update
+  const oldValues = { ...existing };
+
   store.updateAudit(id, updates);
 
+  // Explicit audit trail logging with full old/new context
+  store.logAudit('UPDATE', 'Audit', id, oldValues, updates);
+
   const updated = useQMSStore.getState().audits.find(a => a.id === id);
-  return updated!;
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Audit not found after update');
+  }
+  return updated;
+}
+
+/**
+ * Gets audits filtered by organization.
+ */
+export function getAudits(organizationId?: string): Audit[] {
+  const store = useQMSStore.getState();
+  if (!organizationId) return store.audits;
+  return store.audits.filter(a => a.organizationId === organizationId);
 }
 
 /**
@@ -94,9 +121,9 @@ export function completeAudit(
     );
   }
 
-  if (existing.status !== 'In Progress' && existing.status !== 'Pending Report') {
+  if (existing.status !== 'In Progress') {
     throw new ComplianceError(
-      `Audit ${existing.auditNumber} must be in "In Progress" or "Pending Report" status to complete (current: ${existing.status})`,
+      `Audit ${existing.auditNumber} must be in "In Progress" status to complete (current: ${existing.status})`,
       COMPLIANCE_CODES.INVALID_STATUS_TRANSITION
     );
   }
@@ -105,8 +132,7 @@ export function completeAudit(
 
   store.updateAudit(id, {
     status: 'Completed',
-    completedAt: new Date().toISOString(),
-    completedById: signerId,
+    completedDate: new Date().toISOString(),
   });
 
   store.logAudit('APPROVE', 'Audit', id,
@@ -114,7 +140,11 @@ export function completeAudit(
     { status: 'Completed', completedBy: signerName, signatureHash }
   );
 
-  return useQMSStore.getState().audits.find(a => a.id === id)!;
+  const updated = useQMSStore.getState().audits.find(a => a.id === id);
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Audit not found after completion');
+  }
+  return updated;
 }
 
 /**
@@ -142,7 +172,11 @@ export function addAuditFinding(
   const updatedFindings = [...(existing.findings || []), newFinding];
   store.updateAudit(auditId, { findings: updatedFindings });
 
-  return useQMSStore.getState().audits.find(a => a.id === auditId)!;
+  const updated = useQMSStore.getState().audits.find(a => a.id === auditId);
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Audit not found after adding finding');
+  }
+  return updated;
 }
 
 /**
@@ -168,7 +202,11 @@ export function updateAuditFinding(
   );
   store.updateAudit(auditId, { findings: updatedFindings });
 
-  return useQMSStore.getState().audits.find(a => a.id === auditId)!;
+  const updated = useQMSStore.getState().audits.find(a => a.id === auditId);
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Audit not found after updating finding');
+  }
+  return updated;
 }
 
 // ============================================================================
@@ -176,11 +214,9 @@ export function updateAuditFinding(
 // ============================================================================
 
 const VALID_AUDIT_TRANSITIONS: Record<string, string[]> = {
-  'Scheduled': ['In Progress', 'Cancelled'],
-  'In Progress': ['Pending Report', 'Scheduled'],
-  'Pending Report': ['Completed', 'In Progress'],
+  'Planned': ['In Progress'],
+  'In Progress': ['Completed', 'Planned'],
   'Completed': [],
-  'Cancelled': [],
 };
 
 function validateAuditStatusTransition(current: string, target: string): void {

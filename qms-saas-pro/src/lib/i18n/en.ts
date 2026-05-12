@@ -54,6 +54,7 @@ export const en: TranslationStrings = {
     reports: 'Reports & Analytics',
     compliance: 'Compliance',
     userManagement: 'User Management',
+    organizationSettings: 'Organization Settings',
     settings: 'Settings',
     records: 'Records',
     governance: 'Governance',

@@ -3,6 +3,7 @@
 // Toute opération CREATE/UPDATE/DELETE/SIGN est loggée. Ne jamais supprimer les entrées.
 
 import { useQMSStore } from '@/lib/demo-store';
+import { ComplianceError, COMPLIANCE_CODES } from '@/lib/errors';
 import type { AuditTrail, AuditAction } from '@/types/qms';
 
 // ============================================================================
@@ -12,6 +13,7 @@ import type { AuditTrail, AuditAction } from '@/types/qms';
 /**
  * Enregistre une entrée dans l'audit trail.
  * L'audit trail est immuable — les entrées ne peuvent jamais être supprimées.
+ * organizationId is REQUIRED — never falls back to a hardcoded default.
  */
 export function logAuditEntry(entry: {
   action: AuditAction;
@@ -23,9 +25,17 @@ export function logAuditEntry(entry: {
   newValues?: Record<string, unknown>;
   ipAddress?: string;
   userAgent?: string;
-  organizationId?: string;
+  organizationId: string;
 }): AuditTrail {
   const store = useQMSStore.getState();
+
+  // Validate that organizationId is provided and not a hardcoded default
+  if (!entry.organizationId) {
+    throw new ComplianceError(
+      'organizationId is required for audit trail entries',
+      COMPLIANCE_CODES.REQUIRED_FIELD_MISSING
+    );
+  }
 
   // Utiliser l'utilisateur courant si pas spécifié
   const currentUser = store.profiles[0]; // Démo: premier utilisateur
@@ -43,7 +53,7 @@ export function logAuditEntry(entry: {
     newValues: entry.newValues,
     ipAddress: entry.ipAddress,
     userAgent: entry.userAgent || (typeof navigator !== 'undefined' ? navigator.userAgent : 'server'),
-    organizationId: entry.organizationId || 'org-001',
+    organizationId: entry.organizationId,
     createdAt: new Date().toISOString(),
   };
 
@@ -81,6 +91,7 @@ export interface AuditTrailQueryResult {
 
 /**
  * Requête l'audit trail avec filtres et pagination.
+ * When organizationId is provided, filters by organization.
  */
 export function queryAuditTrail(
   filter: AuditTrailFilter = {},
@@ -217,14 +228,18 @@ export interface AuditTrailStats {
 
 /**
  * Calcule les statistiques de l'audit trail.
+ * organizationId is required — no hardcoded fallbacks.
  */
-export function getAuditTrailStats(organizationId?: string): AuditTrailStats {
-  const store = useQMSStore.getState();
-  let entries = [...store.auditTrails];
-
-  if (organizationId) {
-    entries = entries.filter(e => e.organizationId === organizationId);
+export function getAuditTrailStats(organizationId: string): AuditTrailStats {
+  if (!organizationId) {
+    throw new ComplianceError(
+      'organizationId is required for audit trail statistics',
+      COMPLIANCE_CODES.REQUIRED_FIELD_MISSING
+    );
   }
+
+  const store = useQMSStore.getState();
+  const entries = store.auditTrails.filter(e => e.organizationId === organizationId);
 
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);

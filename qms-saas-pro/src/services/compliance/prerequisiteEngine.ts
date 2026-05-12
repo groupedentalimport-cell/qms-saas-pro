@@ -72,7 +72,7 @@ const DEFAULT_PREREQUISITES: Record<PrerequisiteRecordType, Array<{
  */
 export function checkPrerequisites(
   recordType: PrerequisiteRecordType,
-  organizationId: string
+  organizationId?: string
 ): PrerequisiteCheckResult {
   try {
     const store = useQMSStore.getState();
@@ -105,10 +105,12 @@ export function checkPrerequisites(
         candidates = candidates.filter(d => d.documentNumber === prereq.requiredDocRef);
       }
 
-      // Filter by organization
-      candidates = candidates.filter(
-        d => !d.organizationId || d.organizationId === organizationId
-      );
+      // Filter by organization if specified
+      if (organizationId) {
+        candidates = candidates.filter(
+          d => !d.organizationId || d.organizationId === organizationId
+        );
+      }
 
       const satisfyingDoc = candidates[0];
       const satisfied = !!satisfyingDoc;
@@ -143,7 +145,7 @@ export function checkPrerequisites(
  */
 export function enforcePrerequisites(
   recordType: PrerequisiteRecordType,
-  organizationId: string
+  organizationId?: string
 ): void {
   const result = checkPrerequisites(recordType, organizationId);
 
@@ -165,7 +167,7 @@ export function enforcePrerequisites(
  */
 export function getPrerequisiteWarnings(
   recordType: PrerequisiteRecordType,
-  organizationId: string
+  organizationId?: string
 ): Warning[] {
   const result = checkPrerequisites(recordType, organizationId);
 
@@ -189,13 +191,13 @@ export function getPrerequisiteWarnings(
  */
 function getDefaultPrerequisites(
   recordType: PrerequisiteRecordType,
-  organizationId: string
+  organizationId?: string
 ): DocumentPrerequisite[] {
   const defaults = DEFAULT_PREREQUISITES[recordType] || [];
 
   return defaults.map((def, index) => ({
     id: `prereq-default-${recordType}-${index}`,
-    organizationId,
+    organizationId: organizationId || '',
     recordType,
     requiredDocType: def.requiredDocType,
     isMandatory: def.isMandatory,
@@ -207,11 +209,13 @@ function getDefaultPrerequisites(
 /**
  * Checks whether a record type has any prerequisites defined.
  */
-export function hasPrerequisites(recordType: PrerequisiteRecordType, organizationId: string): boolean {
+export function hasPrerequisites(recordType: PrerequisiteRecordType, organizationId?: string): boolean {
   const store = useQMSStore.getState();
-  const stored = store.prerequisites.filter(
-    p => p.recordType === recordType && (!p.organizationId || p.organizationId === organizationId)
-  );
+  const stored = organizationId
+    ? store.prerequisites.filter(
+        p => p.recordType === recordType && (!p.organizationId || p.organizationId === organizationId)
+      )
+    : store.prerequisites.filter(p => p.recordType === recordType);
   if (stored.length > 0) return true;
   return recordType in DEFAULT_PREREQUISITES;
 }
@@ -222,7 +226,7 @@ export function hasPrerequisites(recordType: PrerequisiteRecordType, organizatio
  */
 export function getPrerequisiteSummary(
   recordType: PrerequisiteRecordType,
-  organizationId: string
+  organizationId?: string
 ): {
   total: number;
   satisfied: number;

@@ -54,6 +54,7 @@ export const fr: TranslationStrings = {
     reports: 'Rapports & Analyses',
     compliance: 'Conformité',
     userManagement: 'Gestion Utilisateurs',
+    organizationSettings: 'Paramètres Organisation',
     settings: 'Paramètres',
     records: 'Enregistrements',
     governance: 'Pilotage',

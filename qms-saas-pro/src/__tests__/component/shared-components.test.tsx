@@ -25,7 +25,7 @@ Element.prototype.scrollIntoView = vi.fn();
 
 // Mock custom ThemeProvider (ThemeToggle depends on useTheme)
 const mockSetTheme = vi.fn();
-const mockTheme = { theme: 'light' as const, setTheme: mockSetTheme, resolvedTheme: 'light' as const };
+const mockTheme = { theme: 'light' as string, setTheme: mockSetTheme, resolvedTheme: 'light' as string };
 
 vi.mock('@/providers/ThemeProvider', () => ({
   useTheme: () => mockTheme,

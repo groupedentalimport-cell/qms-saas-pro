@@ -36,7 +36,10 @@ export function updateOrganization(id: string, updates: Partial<Organization>): 
   );
 
   const updated = useQMSStore.getState().organizations.find(o => o.id === id);
-  return updated!;
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Organization not found after update');
+  }
+  return updated;
 }
 
 /**
@@ -63,12 +66,15 @@ export function updateOrgSettings(orgId: string, settingsUpdates: Partial<OrgSet
 
   // Log the settings update
   store.logAudit('UPDATE', 'Organization', orgId,
-    currentSettings,
-    newSettings
+    currentSettings as unknown as Record<string, unknown>,
+    newSettings as unknown as Record<string, unknown>
   );
 
   const updated = useQMSStore.getState().organizations.find(o => o.id === orgId);
-  return updated!;
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Organization not found after settings update');
+  }
+  return updated;
 }
 
 /**

@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import type { Profile, Organization, Document, Capa, NonConformance, BatchRecord, Supplier, FormTemplate, FormInstance, AuditTrail, Audit, Training, Risk, DocumentPrerequisite, OrganizationMember, OrgSettings, ChangeControl, Deviation } from '@/types/qms';
 import { parseOrgSettings } from '@/types/qms';
 import { mockProfiles, mockOrganizations, mockOrgMembers, mockDocuments, mockCapas, mockNCRs, mockBatchRecords, mockSuppliers, mockFormTemplates, mockFormInstances, mockAudits, mockTraining, mockRisks, mockAuditTrails, mockPrerequisites, mockChangeControls, mockDeviations } from './mock-data';
+import { generateSignatureHashSync } from '@/services/compliance/signatureEngine';
 
 interface QMSStore {
   // Data
@@ -289,17 +290,14 @@ export const useQMSStore = create<QMSStore>((set, get) => ({
     };
   }),
 
-  // Signature generation
+  // Signature generation (delegates to SHA-256 based signatureEngine)
   generateSignatureHash: (signerId, documentId, type) => {
-    const timestamp = Date.now();
-    const data = `${signerId}:${documentId}:${type}:${timestamp}`;
-    // Simple hash for demo purposes
-    let hash = 0;
-    for (let i = 0; i < data.length; i++) {
-      const char = data.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash |= 0;
-    }
-    return `SIG-${Math.abs(hash).toString(16).toUpperCase()}-${timestamp.toString(36).toUpperCase()}`;
+    const timestamp = new Date().toISOString();
+    return generateSignatureHashSync({
+      userId: signerId,
+      recordId: documentId,
+      timestamp,
+      passwordConfirmation: type,
+    });
   },
 }));

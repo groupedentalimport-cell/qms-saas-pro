@@ -4,7 +4,7 @@
 
 import { useQMSStore } from '@/lib/demo-store';
 import { ComplianceError, COMPLIANCE_CODES } from '@/lib/errors';
-import type { Training, OrgSettings } from '@/types/qms';
+import type { Training, TrainingStatus, OrgSettings } from '@/types/qms';
 import { parseOrgSettings } from '@/types/qms';
 
 // ============================================================================
@@ -37,8 +37,9 @@ export function createTraining(training: Omit<Training, 'id' | 'createdAt' | 'up
  * Updates a training record with business rule validation.
  * - Auto-detects overdue status
  * - Validates status transitions
+ * - Logs explicit audit trail with old/new values
  */
-export function updateTraining(id: string, updates: Partial<Training>): Training {
+export function updateTraining(id: string, updates: Partial<Training>, organizationId?: string): Training {
   const store = useQMSStore.getState();
   const existing = store.training.find(t => t.id === id);
 
@@ -49,22 +50,49 @@ export function updateTraining(id: string, updates: Partial<Training>): Training
     );
   }
 
+  // Validate organization access
+  const effectiveOrgId = organizationId || existing.organizationId;
+  if (effectiveOrgId && existing.organizationId && existing.organizationId !== effectiveOrgId) {
+    throw new ComplianceError(
+      `Training ${id} does not belong to organization ${effectiveOrgId}`,
+      COMPLIANCE_CODES.INSUFFICIENT_PERMISSIONS
+    );
+  }
+
   // Auto-detect overdue if due date changes
   if (updates.dueDate && !updates.status) {
     const newDate = new Date(updates.dueDate);
-    if (newDate < new Date() && existing.status === 'Not Started') {
+    if (newDate < new Date() && existing.status === 'Planned') {
       updates.status = 'Overdue';
     }
   }
 
+  // Capture old values before update
+  const oldValues = { ...existing };
+
   store.updateTraining(id, updates);
 
+  // Explicit audit trail logging with full old/new context
+  store.logAudit('UPDATE', 'Training', id, oldValues, updates);
+
   const updated = useQMSStore.getState().training.find(t => t.id === id);
-  return updated!;
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Training not found after update');
+  }
+  return updated;
 }
 
 /**
- * Starts a training (Not Started → In Progress).
+ * Gets training records filtered by organization.
+ */
+export function getTrainingRecords(organizationId?: string): Training[] {
+  const store = useQMSStore.getState();
+  if (!organizationId) return store.training;
+  return store.training.filter(t => t.organizationId === organizationId);
+}
+
+/**
+ * Starts a training (Planned → In Progress).
  */
 export function startTraining(id: string): Training {
   const store = useQMSStore.getState();
@@ -77,15 +105,20 @@ export function startTraining(id: string): Training {
     );
   }
 
-  if (existing.status !== 'Not Started' && existing.status !== 'Overdue') {
+  if (existing.status !== 'Planned' && existing.status !== 'Overdue') {
     throw new ComplianceError(
-      `Training must be in "Not Started" or "Overdue" status to start (current: ${existing.status})`,
+      `Training must be in "Planned" or "Overdue" status to start (current: ${existing.status})`,
       COMPLIANCE_CODES.INVALID_STATUS_TRANSITION
     );
   }
 
   store.updateTraining(id, { status: 'In Progress' });
-  return useQMSStore.getState().training.find(t => t.id === id)!;
+
+  const updated = useQMSStore.getState().training.find(t => t.id === id);
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Training not found after start');
+  }
+  return updated;
 }
 
 /**
@@ -121,7 +154,7 @@ export function completeTraining(
   if (orgId) {
     const orgSettings = store.getOrgSettings(orgId);
     if (orgSettings) {
-      requiresSignature = orgSettings.training_completion_requires_signature ?? false;
+      requiresSignature = orgSettings.require_electronic_signatures ?? false;
     }
   }
 
@@ -129,8 +162,7 @@ export function completeTraining(
 
   const updates: Partial<Training> = {
     status: 'Completed',
-    completedAt: new Date().toISOString(),
-    completedById: signerId,
+    completedDate: new Date().toISOString(),
   };
 
   store.updateTraining(id, updates);
@@ -140,7 +172,11 @@ export function completeTraining(
     { status: 'Completed', completedBy: signerName, signatureHash, requiresSignature }
   );
 
-  return useQMSStore.getState().training.find(t => t.id === id)!;
+  const updated = useQMSStore.getState().training.find(t => t.id === id);
+  if (!updated) {
+    throw new ComplianceError('ENTITY_NOT_FOUND', 'Training not found after completion');
+  }
+  return updated;
 }
 
 /**
@@ -155,21 +191,25 @@ export function getTrainingOrgSettings(orgId: string): OrgSettings | null {
 // Status Detection Helpers
 // ============================================================================
 
-function detectTrainingStatus(dueDate: string): Training['status'] {
+function detectTrainingStatus(dueDate: string): TrainingStatus {
   const due = new Date(dueDate);
   const now = new Date();
-  return due < now ? 'Overdue' : 'Not Started';
+  return due < now ? 'Overdue' : 'Planned';
 }
 
 /**
  * Scans all training records and updates overdue statuses.
  */
-export function refreshOverdueStatuses(): void {
+export function refreshOverdueStatuses(organizationId?: string): void {
   const store = useQMSStore.getState();
   const now = new Date();
 
-  for (const training of store.training) {
-    if (training.status === 'Not Started' && new Date(training.dueDate) < now) {
+  const records = organizationId
+    ? store.training.filter(t => t.organizationId === organizationId)
+    : store.training;
+
+  for (const training of records) {
+    if (training.status === 'Planned' && new Date(training.dueDate) < now) {
       store.updateTraining(training.id, { status: 'Overdue' });
     }
   }

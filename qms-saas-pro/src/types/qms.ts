@@ -711,7 +711,7 @@ export type ActiveSection =
   | 'documents' | 'document-hierarchy'
   | 'ncr' | 'capa' | 'audits' | 'risks' | 'training' | 'change-control' | 'deviations' | 'batch-records' | 'suppliers' | 'oos-oot' | 'forms'
   | 'reports' | 'compliance'
-  | 'user-management';
+  | 'user-management' | 'organization-settings';
 
 // ============================================================================
 // Type Guards

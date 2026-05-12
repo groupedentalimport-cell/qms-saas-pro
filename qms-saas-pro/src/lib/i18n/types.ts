@@ -56,6 +56,7 @@ export interface TranslationStrings {
     reports: string;
     compliance: string;
     userManagement: string;
+    organizationSettings: string;
     settings: string;
     records: string;
     governance: string;
