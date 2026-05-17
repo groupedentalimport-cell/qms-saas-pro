@@ -1,8 +1,10 @@
+'use client';
+
 import React, { useState } from 'react';
 import { useAuth } from '@/qms/contexts/AuthContext';
-import { performElectronicSignature } from '@/qms/services/signatureService';
+import { createSignatureRecord } from '@/qms/services/compliance/signatureEngine';
 import type { SignatureType } from '@/qms/types/qms';
-import { AlertTriangle, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ShieldCheck, Loader2 } from 'lucide-react';
 import { Button } from '@/qms/components/ui/button';
 import { Input } from '@/qms/components/ui/input';
 import { Badge } from '@/qms/components/ui/badge';
@@ -12,11 +14,17 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/qms/components/ui/dialog';
 import { cn } from '@/qms/lib/utils';
+import { ComplianceError, COMPLIANCE_CODES } from '@/qms/lib/errors';
 
 interface ElectronicSignatureModalProps {
   open: boolean;
   onClose: () => void;
-  onSign: (signatureData: { signatureHash: string; signedAt: string; signatureType: SignatureType }) => void;
+  onSign: (signatureData: {
+    signatureHash: string;
+    signedAt: string;
+    signatureType: SignatureType;
+    reason?: string;
+  }) => void;
   recordTitle: string;
   recordId: string;
   signatureType: SignatureType;
@@ -36,6 +44,53 @@ const signatureTypeColors: Record<SignatureType, string> = {
   verification: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
 };
 
+/**
+ * Verifies the user's password before allowing an electronic signature.
+ *
+ * In production mode (Supabase configured): delegates to Supabase Auth
+ * (signInWithPassword) for real credential verification.
+ *
+ * In demo mode: verifies against the demo user's known password
+ * ("demo" for all demo accounts) to simulate the re-authentication flow.
+ * This ensures the signing workflow is always exercised, even in demo.
+ */
+async function verifyUserPassword(
+  email: string,
+  password: string,
+  _userId: string
+): Promise<{ success: boolean; error?: string }> {
+  // In production mode, use Supabase Auth for real verification
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (supabaseUrl && supabaseKey &&
+      !supabaseUrl.includes('your-project') &&
+      !supabaseKey.includes('your-')) {
+    try {
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) {
+        return { success: false, error: 'Invalid credentials. Please try again.' };
+      }
+      return { success: true };
+    } catch {
+      return { success: false, error: 'Authentication service unavailable.' };
+    }
+  }
+
+  // Demo mode: verify against known demo password
+  // All demo accounts use "demo" as password for testing purposes
+  if (password === 'demo') {
+    return { success: true };
+  }
+
+  return { success: false, error: 'Invalid password. In demo mode, use "demo" as password.' };
+}
+
 export function ElectronicSignatureModal({
   open,
   onClose,
@@ -49,34 +104,71 @@ export function ElectronicSignatureModal({
   const [password, setPassword] = useState('');
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
+    // --- Pre-validation ---
     if (!password.trim()) {
-      setError('Password is required for electronic signature');
+      setError('Password is required for electronic signature (21 CFR §11.200)');
       return;
     }
 
-    // Generate signature hash and log audit trail via service
-    const { signatureHash } = performElectronicSignature(
-      currentUser?.id || 'unknown',
-      recordId,
-      signatureType,
-      recordTitle,
-      currentUser?.email
-    );
+    if (!currentUser) {
+      setError('No authenticated user found. You must be logged in to sign.');
+      return;
+    }
 
-    // Call onSign callback
-    onSign({
-      signatureHash,
-      signedAt: new Date().toISOString(),
-      signatureType,
-    });
-
-    // Reset and close
-    setPassword('');
-    setReason('');
+    setIsVerifying(true);
     setError(null);
-    onClose();
+
+    try {
+      // --- Step 1: Re-authenticate the user (21 CFR §11.200 requirement) ---
+      const verification = await verifyUserPassword(
+        currentUser.email,
+        password,
+        currentUser.id
+      );
+
+      if (!verification.success) {
+        setError(verification.error || 'Authentication failed. Please try again.');
+        setIsVerifying(false);
+        return;
+      }
+
+      // --- Step 2: Create the signature record with verified identity ---
+      const signature = await createSignatureRecord({
+        userId: currentUser.id, // Always a real user ID, never 'unknown'
+        recordId,
+        signatureType,
+        signerName: currentUser.fullName || currentUser.email,
+        signerRole: currentUser.role,
+        passwordConfirmation: password, // Verified password used as nonce input
+      });
+
+      // --- Step 3: Call onSign with full signature data including reason ---
+      onSign({
+        signatureHash: signature.signatureHash,
+        signedAt: signature.createdAt,
+        signatureType,
+        reason: reason.trim() || undefined,
+      });
+
+      // Reset and close
+      setPassword('');
+      setReason('');
+      setError(null);
+      onClose();
+    } catch (err) {
+      if (err instanceof ComplianceError) {
+        setError(err.message);
+      } else if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('An unexpected error occurred during signing.');
+      }
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
   const handleClose = () => {
@@ -122,9 +214,9 @@ export function ElectronicSignatureModal({
             </div>
           </div>
 
-          {/* Password Confirmation */}
+          {/* Password Confirmation — Re-authentication required per 21 CFR §11.200 */}
           <div className="grid gap-2">
-            <Label htmlFor="esig-password">Confirm Password *</Label>
+            <Label htmlFor="esig-password">Confirm Password * <span className="text-xs text-muted-foreground">(re-authentication required)</span></Label>
             <Input
               id="esig-password"
               type="password"
@@ -132,7 +224,11 @@ export function ElectronicSignatureModal({
               onChange={(e) => { setPassword(e.target.value); setError(null); }}
               placeholder="Enter your password to sign"
               autoComplete="off"
+              disabled={isVerifying}
             />
+            <p className="text-xs text-muted-foreground">
+              {process.env.NEXT_PUBLIC_SUPABASE_URL ? 'Your account password will be verified.' : 'Demo mode: use "demo" as password.'}
+            </p>
           </div>
 
           {/* Reason / Comment */}
@@ -144,6 +240,7 @@ export function ElectronicSignatureModal({
               onChange={(e) => setReason(e.target.value)}
               placeholder="Enter reason for this signature..."
               rows={2}
+              disabled={isVerifying}
             />
           </div>
 
@@ -163,19 +260,23 @@ export function ElectronicSignatureModal({
               <p className="mt-1">
                 This electronic signature is legally binding and equivalent to a handwritten signature.
                 By signing, you confirm your identity and intent to sign this record.
-                All signature events are recorded in the audit trail.
+                Your password has been verified and all signature events are recorded in the audit trail.
               </p>
             </div>
           </div>
 
           {/* Action Buttons */}
           <div className="flex gap-3 pt-2">
-            <Button variant="outline" className="flex-1" onClick={handleClose}>
+            <Button variant="outline" className="flex-1" onClick={handleClose} disabled={isVerifying}>
               Cancel
             </Button>
-            <Button className="flex-1" onClick={handleConfirm} disabled={!password.trim()}>
-              <ShieldCheck className="h-4 w-4 mr-2" />
-              Sign
+            <Button className="flex-1" onClick={handleConfirm} disabled={!password.trim() || isVerifying}>
+              {isVerifying ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <ShieldCheck className="h-4 w-4 mr-2" />
+              )}
+              {isVerifying ? 'Verifying...' : 'Sign'}
             </Button>
           </div>
         </div>

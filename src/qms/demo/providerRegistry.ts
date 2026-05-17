@@ -52,7 +52,7 @@ function isSupabaseConfigured(): boolean {
 
   if (!url || !key) return false;
   if (url.includes('your-project')) return false;
-  if (url.includes('localhost')) return false;
+  // Allow localhost for local Supabase development/testing
   if (key.includes('your-')) return false;
 
   return true;

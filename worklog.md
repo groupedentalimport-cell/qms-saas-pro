@@ -148,3 +148,27 @@ Stage Summary:
 - All navigation sections work (Dashboard, Documents, NCR, CAPA, Audits, Risks, Training, etc.)
 - Demo mode functional (no Supabase backend required)
 - App running in Next.js 16 environment with auto-managed dev server
+
+---
+Task ID: audit-corrections-blockers-risks
+Agent: Super Z (main)
+Task: Apply all corrections from deployment readiness audit (5 blockers + 4 risks)
+
+Work Log:
+- Blocker 1: Created .env.example with all required Supabase variables documented. Removed localhost restriction from providerRegistry.ts.
+- Blocker 2: Replaced obsolete start.sh (Chinese comments, Next.js hybrid) with clean production startup script. Created Caddyfile.production with full security headers. Removed keep-alive.sh, deploy-server.py, run-server.sh, serve-dist.mjs, start-server.sh.
+- Blocker 3: Added *.db, *.db-journal, prisma/*.db, prisma/*.db-journal, /upload/ to .gitignore. Ran git rm --cached qms-saas-pro/prisma/dev.db.
+- Blocker 4: Completely rewrote ElectronicSignatureModal.tsx: added async verifyUserPassword() function (Supabase Auth in production, "demo" password in demo mode), replaced performElectronicSignature with createSignatureRecord (full CFR Part 11 flow), added reason field to onSign callback, added loading state during verification, blocked signing when no authenticated user.
+- Blocker 5: Rewrote logAudit in demo-store.ts: replaced hardcoded userId: 'user-001' with dynamic resolution from store state + optional userContext parameter. Updated signature signatureEngine.ts and signatureService.ts to pass userContext.
+- Risk 1: Added security headers in next.config.ts (CSP, HSTS, X-Frame-Options: DENY, X-Content-Type-Options, Referrer-Policy, Permissions-Policy).
+- Risk 2: Removed all obsolete scripts with Chinese comments.
+- Risk 3: Fixed next.config.ts: removed ignoreBuildErrors, enabled reactStrictMode, added security headers.
+- Risk 4: Enhanced SupabaseProvider.ts with Supabase client initialization, getSupabase() helper, and documented critical methods.
+- Also: Updated AuthContext.tsx login() to require password verification (async, Supabase Auth or demo password).
+
+Stage Summary:
+- All 5 blockers resolved
+- All 4 risks resolved
+- ESLint: 0 errors
+- App running: HTTP 200 on ports 3000 and 81
+- Security headers verified in responses: CSP, HSTS, X-Frame-Options, X-Content-Type-Options

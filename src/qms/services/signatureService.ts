@@ -26,7 +26,7 @@ export function generateSignatureHash(
 /**
  * Logs an electronic signature event to the audit trail.
  * - Records the signer, record, and signature type
- * - Creates an immutable audit trail entry
+ * - Creates an immutable audit trail entry with proper user attribution
  */
 export function logSignatureAudit(
   recordId: string,
@@ -37,11 +37,20 @@ export function logSignatureAudit(
 ): void {
   const store = useQMSStore.getState();
 
+  // Resolve user context from store for proper audit attribution
+  const activeUser = signerId
+    ? store.profiles.find(p => p.id === signerId)
+    : store.profiles.find(p => p.email === 'admin@qms-demo.com');
+
   store.logAudit('SIGN', 'ElectronicSignature', recordId, undefined, {
     signatureType,
     recordTitle,
     signerId,
     signerEmail,
+  }, {
+    userId: signerId ?? activeUser?.id,
+    userEmail: signerEmail ?? activeUser?.email,
+    organizationId: store.organizations[0]?.id,
   });
 }
 

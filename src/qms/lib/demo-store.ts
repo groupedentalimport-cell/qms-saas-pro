@@ -60,7 +60,7 @@ interface QMSStore {
   updateProfile: (id: string, updates: Partial<Profile>) => void;
 
   // Audit trail logging
-  logAudit: (action: AuditTrail['action'], tableName: string, recordId?: string, oldValues?: Record<string, unknown>, newValues?: Record<string, unknown>) => void;
+  logAudit: (action: AuditTrail['action'], tableName: string, recordId?: string, oldValues?: Record<string, unknown>, newValues?: Record<string, unknown>, userContext?: { userId?: string; userEmail?: string; organizationId?: string }) => void;
 
   // Organization management
   updateOrganization: (id: string, updates: Partial<Organization>) => void;
@@ -257,17 +257,24 @@ export const useQMSStore = create<QMSStore>((set, get) => ({
   }),
 
   // Audit trail logging
-  logAudit: (action, tableName, recordId, oldValues, newValues) => {
+  logAudit: (action, tableName, recordId, oldValues, newValues, userContext) => {
+    // Resolve current user from store state (not hardcoded)
+    // Falls back to the first profile if no user context is provided
+    const currentState = get();
+    const activeUser = userContext?.userId
+      ? currentState.profiles.find(p => p.id === userContext.userId)
+      : currentState.profiles.find(p => p.email === 'admin@qms-demo.com');
+    const activeOrg = currentState.organizations[0];
     const entry: AuditTrail = {
       id: `at-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       action,
       tableName,
       recordId,
-      userId: 'user-001', // demo user
-      userEmail: 'admin@qms-demo.com',
+      userId: userContext?.userId ?? activeUser?.id ?? 'anonymous',
+      userEmail: userContext?.userEmail ?? activeUser?.email ?? 'unknown',
       oldValues,
       newValues,
-      organizationId: 'org-001',
+      organizationId: userContext?.organizationId ?? activeOrg?.id ?? 'unknown',
       createdAt: new Date().toISOString(),
     };
     set(state => ({ auditTrails: [entry, ...state.auditTrails] }));

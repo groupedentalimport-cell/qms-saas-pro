@@ -1,0 +1,64 @@
+#!/bin/bash
+# =============================================================================
+# QMS SaaS Pro — Caddyfile for Production Deployment
+# =============================================================================
+# This Caddyfile is designed for production use with:
+#   - Static file serving from the Vite build output
+#   - SPA routing (all paths → index.html)
+#   - Security headers (CSP, HSTS, X-Frame-Options, etc.)
+#   - Gzip compression
+#   - Cache control for static assets
+#
+# Usage:
+#   caddy run --config Caddyfile
+#
+# For development, the Next.js dev server handles its own Caddyfile.
+# =============================================================================
+
+:80 {
+	root * /app/dist
+	file_server
+	encode gzip
+
+	# SPA routing: serve index.html for all non-file paths
+	try_files {path} /index.html
+
+	# --- Security Headers (GxP / Healthcare compliance) ---
+	header {
+		# Prevent MIME type sniffing
+		X-Content-Type-Options "nosniff"
+
+		# Prevent clickjacking — QMS must never be embedded in iframes
+		X-Frame-Options "DENY"
+
+		# XSS protection for legacy browsers
+		X-XSS-Protection "1; mode=block"
+
+		# HTTPS enforcement — 1 year max-age with subdomains
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+		# Content Security Policy — restrict to self + Supabase
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' *.supabase.co *.supabase.in; img-src 'self' data: blob:; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+
+		# Referrer policy — only send origin to cross-origin targets
+		Referrer-Policy "strict-origin-when-cross-origin"
+
+		# Permissions policy — disable features not needed by QMS
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+	}
+
+	# --- Cache Control ---
+	# Static assets (JS, CSS, images): cache for 1 year (immutable)
+	@static path *.js *.css *.svg *.png *.jpg *.ico *.woff2 *.woff
+	header @static Cache-Control "public, max-age=31536000, immutable"
+
+	# HTML files: no cache (always serve latest version)
+	@html path *.html /
+	header @html Cache-Control "no-cache, no-store, must-revalidate"
+
+	# --- Logging ---
+	log {
+		output stdout
+		format console
+	}
+}

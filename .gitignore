@@ -50,5 +50,15 @@ test
 prompt
 
 server.log
+
+# Database files — NEVER commit databases (contains regulated data)
+*.db
+*.db-journal
+prisma/*.db
+prisma/*.db-journal
+
+# Upload directory — may contain sensitive documents
+/upload/
+
 # Skills directory
 /skills/

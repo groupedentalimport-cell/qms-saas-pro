@@ -1,3 +1,4 @@
+'use client';
 
 import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import type { Profile, UserRole, Permission } from '@/qms/types/qms';
@@ -7,7 +8,7 @@ import { useQMSStore } from '@/qms/lib/demo-store';
 interface AuthContextType {
   currentUser: Profile | null;
   isAuthenticated: boolean;
-  login: (email: string) => boolean;
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   hasPermission: (permission: Permission) => boolean;
   hasRole: (role: UserRole) => boolean;
@@ -15,6 +16,9 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// Demo password for all accounts — in production, Supabase Auth handles this
+const DEMO_PASSWORD = 'demo';
 
 // Initialize demo user from mock data directly
 function getInitialUser(profiles: Profile[]): Profile | null {
@@ -37,7 +41,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const isAuthenticated = currentUser !== null;
 
-  const login = useCallback((email: string) => {
+  /**
+   * Login with email and password verification.
+   *
+   * In production mode (Supabase configured): delegates to Supabase Auth
+   * for real credential verification.
+   *
+   * In demo mode: verifies against the known demo password ("demo")
+   * to simulate authentication flow.
+   */
+  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
+    // Production mode: use Supabase Auth
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (supabaseUrl && supabaseKey &&
+        !supabaseUrl.includes('your-project') &&
+        !supabaseKey.includes('your-')) {
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) return false;
+      } catch {
+        return false;
+      }
+    } else {
+      // Demo mode: verify password is "demo"
+      if (password !== DEMO_PASSWORD) return false;
+    }
+
     const user = profiles.find(p => p.email === email);
     if (user) {
       setSelectedUserId(user.id);

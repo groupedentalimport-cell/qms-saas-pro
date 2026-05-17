@@ -216,7 +216,7 @@ export async function createSignatureRecord(params: {
   // Lock the record after signing (CFR Part 11 requirement)
   lockRecord(recordId);
 
-  // Log the signature event to the audit trail
+  // Log the signature event to the audit trail with signer context
   const store = useQMSStore.getState();
   store.logAudit('SIGN', 'ElectronicSignature', recordId, undefined, {
     signatureType,
@@ -224,6 +224,9 @@ export async function createSignatureRecord(params: {
     signerRole,
     signatureHash: signatureHash.substring(0, 16) + '...',
     signedAt: timestamp,
+  }, {
+    userId,
+    organizationId: store.organizations[0]?.id,
   });
 
   return signature;
