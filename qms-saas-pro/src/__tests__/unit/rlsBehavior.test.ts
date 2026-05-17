@@ -245,21 +245,30 @@ describe('RLS Behavior (Multi-Tenant Data Isolation)', () => {
   // IDataProvider interface filtering
   // =========================================================================
   describe('IDataProvider interface organization filtering', () => {
-    it('returns all documents but allows filtering by organization', () => {
-      const allDocs = provider.getDocuments();
-      expect(allDocs).toHaveLength(2);
+    it('filters documents by current organization (multi-tenant isolation)', () => {
+      // DemoProvider filters by org-001 by default — only org-001 docs are returned
+      const docs = provider.getDocuments();
+      expect(docs).toHaveLength(1);
+      expect(docs[0].organizationId).toBe('org-001');
 
-      // Consumer of the provider must filter by org
-      const org001Docs = allDocs.filter(d => d.organizationId === 'org-001');
-      expect(org001Docs).toHaveLength(1);
+      // A provider for a different org sees only its own data
+      const org002Provider = new DemoProvider('org-002');
+      const org002Docs = org002Provider.getDocuments();
+      expect(org002Docs).toHaveLength(1);
+      expect(org002Docs[0].organizationId).toBe('org-002');
     });
 
-    it('returns all batch records but allows filtering by organization', () => {
-      const allBatches = provider.getBatchRecords();
-      expect(allBatches).toHaveLength(2);
+    it('filters batch records by current organization (multi-tenant isolation)', () => {
+      // DemoProvider filters by org-001 by default
+      const batches = provider.getBatchRecords();
+      expect(batches).toHaveLength(1);
+      expect(batches[0].organizationId).toBe('org-001');
 
-      const org002Batches = allBatches.filter(b => b.organizationId === 'org-002');
+      // A provider for a different org sees only its own data
+      const org002Provider = new DemoProvider('org-002');
+      const org002Batches = org002Provider.getBatchRecords();
       expect(org002Batches).toHaveLength(1);
+      expect(org002Batches[0].organizationId).toBe('org-002');
     });
 
     it('returns the correct organization by id', () => {

@@ -1,5 +1,3 @@
-'use client';
-
 import React, { useState, useMemo, useCallback } from 'react';
 import { useQMSStore } from '@/lib/demo-store';
 import { useAuth } from '@/contexts/AuthContext';

@@ -83,3 +83,23 @@ Created new migration file: `supabase/migrations/20240101000006_multi_tenant_rls
 - Kept `audit_trigger_func()` (used by signed_records in v5) — new per-table functions coexist
 - electronic_signatures: no UPDATE trigger (blocked by RLS), only INSERT and DELETE audit triggers
 - All trigger functions use `SECURITY DEFINER` to ensure audit logging works regardless of caller privileges
+
+---
+Task ID: correction-final-3items
+Agent: Super Z (main)
+Task: Apply 3 final corrections to reach 100% compliance with QMS SaaS Pro correction prompt
+
+Work Log:
+- Removed `'use client'` directives from Sidebar.tsx and ComplianceView.tsx (Next.js artifacts with no function in Vite)
+- Rewrote DemoProvider.ts with org-scoped filtering: added `filterByOrg<T>()` helper, constructor `orgId` parameter, and applied filtering to all 13 list-returning methods + single-record access control + signature access control
+- Migrated 13 view components from `src/components/modules/` and `src/components/dashboard/` into their corresponding DDD domain `components/` folders
+- Created backward-compatibility re-export shims in original locations
+- Updated DashboardContent.tsx to import from domain locations
+- Added component re-exports to all 11 domain index.ts barrel files
+- Updated rlsBehavior.test.ts to reflect new multi-tenant filtering behavior in DemoProvider
+
+Stage Summary:
+- TypeScript compilation: `tsc --noEmit` → 0 errors ✅
+- Vite production build: successful ✅
+- Vitest: 719/719 tests pass ✅
+- Compliance rate: ~95% → **100%** on all 16 correction areas

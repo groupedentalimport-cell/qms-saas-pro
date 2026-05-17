@@ -1,6 +1,9 @@
 // DemoProvider.ts — IDataProvider implementation backed by Zustand demo-store
 // All data operations delegate to the in-memory Zustand store
 // This provider is used when Supabase is not configured (demo mode)
+//
+// Multi-tenant fidelity: all list-returning methods filter by organizationId
+// to mirror the RLS policies that would be enforced by Supabase in production.
 
 import type { IDataProvider, AuditLogParams, SignatureParams } from './IDataProvider';
 import type {
@@ -36,16 +39,39 @@ const DEMO_USER_EMAIL = 'admin@qms-demo.com';
 const DEMO_ORG_ID = 'org-001';
 
 // ============================================================================
+// Type helper: entities that carry an organizationId field
+// ============================================================================
+
+type OrgScoped = { organizationId?: string; id: string };
+
+/**
+ * Filters an array of org-scoped entities to only those belonging to the
+ * current demo organization. If an entity has no `organizationId` set
+ * (legacy data), it is included by default to avoid breaking existing demos.
+ */
+function filterByOrg<T extends OrgScoped>(items: T[], orgId: string): T[] {
+  return items.filter(item => !item.organizationId || item.organizationId === orgId);
+}
+
+// ============================================================================
 // DemoProvider Implementation
 // ============================================================================
 
 export class DemoProvider implements IDataProvider {
+
+  /** The organization ID used for multi-tenant filtering in demo mode */
+  private readonly orgId: string;
+
+  constructor(orgId: string = DEMO_ORG_ID) {
+    this.orgId = orgId;
+  }
+
   // --------------------------------------------------------------------------
   // Profiles
   // --------------------------------------------------------------------------
 
   getProfiles(): Profile[] {
-    return useQMSStore.getState().profiles;
+    return filterByOrg(useQMSStore.getState().profiles, this.orgId);
   }
 
   getProfile(id: string): Profile | undefined {
@@ -85,7 +111,10 @@ export class DemoProvider implements IDataProvider {
   // --------------------------------------------------------------------------
 
   getOrgMembers(): OrganizationMember[] {
-    return useQMSStore.getState().orgMembers;
+    const orgId = this.orgId;
+    return useQMSStore.getState().orgMembers.filter(
+      m => !m.organizationId || m.organizationId === orgId,
+    );
   }
 
   // --------------------------------------------------------------------------
@@ -93,11 +122,16 @@ export class DemoProvider implements IDataProvider {
   // --------------------------------------------------------------------------
 
   getDocuments(): Document[] {
-    return useQMSStore.getState().documents;
+    return filterByOrg(useQMSStore.getState().documents, this.orgId);
   }
 
   getDocument(id: string): Document | undefined {
-    return useQMSStore.getState().documents.find(d => d.id === id);
+    const doc = useQMSStore.getState().documents.find(d => d.id === id);
+    // Verify org membership for single-record access
+    if (doc && doc.organizationId && doc.organizationId !== this.orgId) {
+      return undefined;
+    }
+    return doc;
   }
 
   addDocument(doc: Document): void {
@@ -113,7 +147,7 @@ export class DemoProvider implements IDataProvider {
   // --------------------------------------------------------------------------
 
   getCapas(): Capa[] {
-    return useQMSStore.getState().capas;
+    return filterByOrg(useQMSStore.getState().capas, this.orgId);
   }
 
   addCapa(capa: Capa): void {
@@ -129,7 +163,7 @@ export class DemoProvider implements IDataProvider {
   // --------------------------------------------------------------------------
 
   getNcrs(): NonConformance[] {
-    return useQMSStore.getState().ncrs;
+    return filterByOrg(useQMSStore.getState().ncrs, this.orgId);
   }
 
   addNcr(ncr: NonConformance): void {
@@ -145,7 +179,7 @@ export class DemoProvider implements IDataProvider {
   // --------------------------------------------------------------------------
 
   getBatchRecords(): BatchRecord[] {
-    return useQMSStore.getState().batchRecords;
+    return filterByOrg(useQMSStore.getState().batchRecords, this.orgId);
   }
 
   addBatchRecord(batch: BatchRecord): void {
@@ -161,7 +195,7 @@ export class DemoProvider implements IDataProvider {
   // --------------------------------------------------------------------------
 
   getSuppliers(): Supplier[] {
-    return useQMSStore.getState().suppliers;
+    return filterByOrg(useQMSStore.getState().suppliers, this.orgId);
   }
 
   addSupplier(supplier: Supplier): void {
@@ -177,7 +211,7 @@ export class DemoProvider implements IDataProvider {
   // --------------------------------------------------------------------------
 
   getFormTemplates(): FormTemplate[] {
-    return useQMSStore.getState().formTemplates;
+    return filterByOrg(useQMSStore.getState().formTemplates, this.orgId);
   }
 
   addFormTemplate(template: FormTemplate): void {
@@ -189,7 +223,7 @@ export class DemoProvider implements IDataProvider {
   // --------------------------------------------------------------------------
 
   getFormInstances(): FormInstance[] {
-    return useQMSStore.getState().formInstances;
+    return filterByOrg(useQMSStore.getState().formInstances, this.orgId);
   }
 
   addFormInstance(instance: FormInstance): void {
@@ -205,7 +239,7 @@ export class DemoProvider implements IDataProvider {
   // --------------------------------------------------------------------------
 
   getAudits(): Audit[] {
-    return useQMSStore.getState().audits;
+    return filterByOrg(useQMSStore.getState().audits, this.orgId);
   }
 
   addAudit(audit: Audit): void {
@@ -221,7 +255,7 @@ export class DemoProvider implements IDataProvider {
   // --------------------------------------------------------------------------
 
   getTraining(): Training[] {
-    return useQMSStore.getState().training;
+    return filterByOrg(useQMSStore.getState().training, this.orgId);
   }
 
   addTraining(training: Training): void {
@@ -237,7 +271,7 @@ export class DemoProvider implements IDataProvider {
   // --------------------------------------------------------------------------
 
   getRisks(): Risk[] {
-    return useQMSStore.getState().risks;
+    return filterByOrg(useQMSStore.getState().risks, this.orgId);
   }
 
   addRisk(risk: Risk): void {
@@ -253,7 +287,7 @@ export class DemoProvider implements IDataProvider {
   // --------------------------------------------------------------------------
 
   getChangeControls(): ChangeControl[] {
-    return useQMSStore.getState().changeControls;
+    return filterByOrg(useQMSStore.getState().changeControls, this.orgId);
   }
 
   addChangeControl(cc: ChangeControl): void {
@@ -269,7 +303,7 @@ export class DemoProvider implements IDataProvider {
   // --------------------------------------------------------------------------
 
   getDeviations(): Deviation[] {
-    return useQMSStore.getState().deviations;
+    return filterByOrg(useQMSStore.getState().deviations, this.orgId);
   }
 
   addDeviation(dev: Deviation): void {
@@ -285,7 +319,7 @@ export class DemoProvider implements IDataProvider {
   // --------------------------------------------------------------------------
 
   getAuditTrails(): AuditTrail[] {
-    return useQMSStore.getState().auditTrails;
+    return filterByOrg(useQMSStore.getState().auditTrails, this.orgId);
   }
 
   logAudit(params: AuditLogParams): AuditTrail {
@@ -299,7 +333,7 @@ export class DemoProvider implements IDataProvider {
       userEmail: DEMO_USER_EMAIL,
       oldValues: params.oldValues,
       newValues: params.newValues,
-      organizationId: params.organizationId || DEMO_ORG_ID,
+      organizationId: params.organizationId || this.orgId,
       createdAt: new Date().toISOString(),
     };
 
@@ -319,7 +353,7 @@ export class DemoProvider implements IDataProvider {
   // --------------------------------------------------------------------------
 
   getPrerequisites(): DocumentPrerequisite[] {
-    return useQMSStore.getState().prerequisites;
+    return filterByOrg(useQMSStore.getState().prerequisites, this.orgId);
   }
 
   // --------------------------------------------------------------------------
@@ -328,14 +362,21 @@ export class DemoProvider implements IDataProvider {
 
   getSignatures(documentId: string): ElectronicSignature[] {
     const store = useQMSStore.getState();
+
+    // Ensure the document belongs to the current org before returning signatures
     const doc = store.documents.find(d => d.id === documentId);
+    if (doc && doc.organizationId && doc.organizationId !== this.orgId) {
+      return [];
+    }
+
     if (doc && doc.signatures) {
       return doc.signatures;
     }
 
-    // Fallback: reconstruct from audit trail SIGN entries
+    // Fallback: reconstruct from audit trail SIGN entries (org-scoped)
     const signEntries = store.auditTrails.filter(
-      t => t.recordId === documentId && t.action === 'SIGN',
+      t => t.recordId === documentId && t.action === 'SIGN'
+        && (!t.organizationId || t.organizationId === this.orgId),
     );
 
     return signEntries.map(entry => ({
@@ -374,6 +415,6 @@ export class DemoProvider implements IDataProvider {
   }
 
   getCurrentOrganizationId(): string {
-    return DEMO_ORG_ID;
+    return this.orgId;
   }
 }

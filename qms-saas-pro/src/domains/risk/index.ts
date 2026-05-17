@@ -4,3 +4,4 @@ export * from './types';
 export * from './services';
 export * from './hooks';
 export * from './validators';
+export { RiskView } from './components/RiskView';

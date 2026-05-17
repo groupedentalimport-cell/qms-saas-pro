@@ -1,0 +1,1 @@
+function e(){throw Error(`Supabase environment variables are not configured`)}export{e as createBrowserClient,e as default};
