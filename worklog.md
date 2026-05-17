@@ -121,3 +121,30 @@ Stage Summary:
 - Output: /home/z/my-project/download/feuille-de-route-qms-test-en-ligne.pdf (63 KB, 13 pages)
 - All metadata present, fonts embedded, no content overflow
 - Document covers: current state, deployment strategy, security hardening, demo data prep, test phases (3), monitoring, rollback plan, calendar, and pre-deployment checklist
+
+---
+Task ID: deploy-online
+Agent: Super Z (main)
+Task: Deploy QMS SaaS Pro application online for presentation
+
+Work Log:
+- Attempted multiple approaches to serve the Vite production build (Node.js server, Python HTTP server, Vite dev server, Vite preview)
+- Discovered platform aggressively kills user-spawned server processes
+- Identified that Caddy reverse proxy connects via IPv6 (::1) - servers binding to IPv4 only were unreachable
+- Initialized fullstack-dev environment (Next.js 16 project) which has a stable auto-managed dev server
+- Migrated QMS SaaS Pro source files from qms-saas-pro/src/ to src/qms/ in the Next.js project
+- Replaced all @/ imports with @/qms/ for coexistence with Next.js project structure
+- Created custom NavigationContext replacing react-router-dom (platform only supports / route)
+- Migrated Vite env variables to Next.js format (import.meta.env → process.env.NEXT_PUBLIC_*)
+- Created QmsApp.tsx wrapper with dynamic import (ssr: false) for client-side rendering
+- Updated page.tsx and layout.tsx with QMS metadata and provider setup
+- Fixed ThemeProvider for React 19 compatibility
+- Installed @supabase/supabase-js dependency
+- Configured allowedDevOrigins in next.config.ts for cross-origin preview access
+
+Stage Summary:
+- Application deployed and accessible: HTTP 200 on both port 3000 and port 81
+- Title shows "QMS SaaS Pro - Quality Management System"
+- All navigation sections work (Dashboard, Documents, NCR, CAPA, Audits, Risks, Training, etc.)
+- Demo mode functional (no Supabase backend required)
+- App running in Next.js 16 environment with auto-managed dev server

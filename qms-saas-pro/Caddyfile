@@ -1,23 +1,24 @@
 :81 {
-	@transform_port_query {
-		query XTransformPort=*
-	}
+	root * /home/z/my-project/qms-saas-pro/dist
+	file_server
+	encode gzip
 
-	handle @transform_port_query {
-		reverse_proxy localhost:{query.XTransformPort} {
-			header_up Host {host}
-			header_up X-Forwarded-For {remote_host}
-			header_up X-Forwarded-Proto {scheme}
-			header_up X-Real-IP {remote_host}
-		}
-	}
+	# SPA routing: all non-file requests go to index.html
+	try_files {path} /index.html
 
-	handle {
-		reverse_proxy localhost:3000 {
-			header_up Host {host}
-			header_up X-Forwarded-For {remote_host}
-			header_up X-Forwarded-Proto {scheme}
-			header_up X-Real-IP {remote_host}
-		}
+	# Cache static assets aggressively
+	@static path *.js *.css *.svg *.png *.jpg *.ico *.woff2 *.woff
+	header @static Cache-Control "public, max-age=31536000, immutable"
+
+	# HTML files: no cache (always serve latest)
+	@html path *.html /
+	header @html Cache-Control "no-cache, no-store, must-revalidate"
+
+	# Security headers
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		X-XSS-Protection "1; mode=block"
+		Referrer-Policy "strict-origin-when-cross-origin"
 	}
 }
