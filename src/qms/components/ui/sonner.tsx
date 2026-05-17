@@ -1,4 +1,4 @@
-import { useTheme } from "@/providers/ThemeProvider"
+import { useTheme } from "@/qms/providers/ThemeProvider"
 import { Toaster as Sonner, ToasterProps } from "sonner"
 
 const Toaster = ({ ...props }: ToasterProps) => {

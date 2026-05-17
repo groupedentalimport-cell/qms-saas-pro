@@ -1,0 +1,36 @@
+# =============================================================================
+# QMS SaaS Pro — Netlify Configuration
+# =============================================================================
+# This file configures Netlify to build and deploy the Next.js application.
+# The @netlify/plugin-nextjs plugin handles SSR, API routes, and static pages.
+# =============================================================================
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Environment variables are set in the Netlify dashboard (Site settings > Environment variables).
+# DO NOT put secrets in this file — use the Netlify UI instead.
+# Required variables:
+#   NEXT_PUBLIC_SUPABASE_URL
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY
+#   SUPABASE_SERVICE_ROLE_KEY (server-only, no NEXT_PUBLIC_ prefix)
+
+# Redirect all requests to Next.js (handled by the plugin)
+# The plugin automatically configures:
+# - SSR pages → Netlify Functions
+# - API routes → Netlify Functions
+# - Static pages → CDN
+# - ISR → Netlify On-Demand Builders
+
+# Headers for additional security (supplements next.config.ts headers)
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"

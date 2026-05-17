@@ -78,7 +78,7 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
 
     (async () => {
       try {
-        const { createBrowserClient } = await import('@/lib/supabase/browser');
+        const { createBrowserClient } = await import('@/qms/lib/supabase/browser');
         const supabase = createBrowserClient();
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
@@ -142,7 +142,7 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
 
     // Supabase mode
     try {
-      const { createBrowserClient } = await import('@/lib/supabase/browser');
+      const { createBrowserClient } = await import('@/qms/lib/supabase/browser');
       const supabase = createBrowserClient();
       const { error } = await supabase.auth.signInWithPassword({ email, password: password || '' });
       return !error;
@@ -162,7 +162,7 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
     }
 
     try {
-      const { createBrowserClient } = await import('@/lib/supabase/browser');
+      const { createBrowserClient } = await import('@/qms/lib/supabase/browser');
       const supabase = createBrowserClient();
       await supabase.auth.signOut();
     } catch {

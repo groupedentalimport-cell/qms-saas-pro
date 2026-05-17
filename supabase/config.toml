@@ -1,0 +1,39 @@
+# =============================================================================
+# QMS SaaS Pro — Supabase CLI Configuration
+# =============================================================================
+# This file configures the Supabase CLI for local development and deployment.
+# Use `supabase link` to connect to your remote project, then `supabase db push`
+# to apply migrations.
+# =============================================================================
+
+[project]
+id = "your-project-id"
+
+[api]
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public"]
+
+[db]
+port = 54322
+
+[studio]
+port = 54323
+
+[auth]
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false
+
+[auth.sms]
+enable_signup = true
+enable_confirmations = false
+
+[storage]
+file_size_limit = "50MB"
