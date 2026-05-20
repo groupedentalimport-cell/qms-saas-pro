@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { createDocument, updateDocument } from '@/services/documentService';
 import type { Document, DocumentType, DocumentStatus, DocumentLevel, DocumentClassification, SignatureType, ElectronicSignature } from '@/types/qms';
 import { ElectronicSignatureModal } from '@/components/shared/ElectronicSignatureModal';
+import { DocumentCreateForm } from './DocumentCreateForm';
 import { cn, formatDate } from '@/lib/utils';
 import {
   FileText,
@@ -25,9 +26,6 @@ import {
   Layers,
   History,
   Link2,
-  Sparkles,
-  Save,
-  ChevronDown,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,7 +34,6 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -65,11 +62,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 
 const statusColors: Record<DocumentStatus, string> = {
   'Draft': 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
@@ -79,13 +71,6 @@ const statusColors: Record<DocumentStatus, string> = {
 };
 
 const levelLabels: Record<DocumentLevel, string> = {
-  1: 'N1 — Policy',
-  2: 'N2 — SOP',
-  3: 'N3 — WI',
-  4: 'N4 — Form/Record',
-};
-
-const levelShortLabels: Record<DocumentLevel, string> = {
   1: 'N1',
   2: 'N2',
   3: 'N3',
@@ -97,13 +82,6 @@ const levelColors: Record<DocumentLevel, string> = {
   2: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400',
   3: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400',
   4: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-};
-
-const levelDescriptions: Record<DocumentLevel, string> = {
-  1: 'Top-level governance documents (Quality Policy, etc.). No parent required. Governs N2 SOPs.',
-  2: 'Standard Operating Procedures. Must reference an N1 parent. Governs N3 WIs.',
-  3: 'Work Instructions with step-by-step details. Must reference an N2 parent. Governs N4 Forms.',
-  4: 'Forms & Records that capture objective evidence. Must reference an N3 parent. Generates record instances subject to validation workflow.',
 };
 
 const classificationLabels: Record<DocumentClassification, string> = {
@@ -125,431 +103,6 @@ const documentStatuses: DocumentStatus[] = ['Draft', 'In Review', 'Approved', 'O
 const documentClassifications: DocumentClassification[] = ['Internal', 'External', 'Regulatory', 'Confidential'];
 const documentLevels: DocumentLevel[] = [1, 2, 3, 4];
 
-// ═══════════════════════════════════════════════════════════════
-// Document Form Component (shared between Create & Edit)
-// ═══════════════════════════════════════════════════════════════
-
-interface DocumentFormProps {
-  editDocument?: Document | null;
-  onSave: (data: {
-    documentNumber: string;
-    title: string;
-    type: DocumentType;
-    description: string;
-    department: string;
-    classification: DocumentClassification;
-    documentLevel: DocumentLevel;
-    scope: string;
-    retentionPeriod: string;
-    parentDocumentId: string;
-    references: string;
-    // N1 specific
-    n1RegulatoryFramework?: string;
-    // N4 specific
-    n4GeneratesRecords?: boolean;
-    n4RecordLifecycle?: string;
-    n4RecordTemplateName?: string;
-    n4AutoNumbering?: string;
-    n4DataIntegrity?: string;
-  }) => void;
-  onCancel: () => void;
-  isEdit?: boolean;
-}
-
-function DocumentForm({ editDocument, onSave, onCancel, isEdit = false }: DocumentFormProps) {
-  const documents = useQMSStore(s => s.documents);
-  const { currentUser } = useAuth();
-
-  // Form state
-  const [formDocNumber, setFormDocNumber] = useState(editDocument?.documentNumber ?? '');
-  const [formTitle, setFormTitle] = useState(editDocument?.title ?? '');
-  const [formType, setFormType] = useState<DocumentType>(editDocument?.type ?? 'SOP');
-  const [formDescription, setFormDescription] = useState(editDocument?.description ?? '');
-  const [formDepartment, setFormDepartment] = useState(editDocument?.department ?? '');
-  const [formClassification, setFormClassification] = useState<DocumentClassification>(editDocument?.classification ?? 'Internal');
-  const [formLevel, setFormLevel] = useState<DocumentLevel>(editDocument?.documentLevel ?? 2);
-  const [formScope, setFormScope] = useState(editDocument?.scope ?? '');
-  const [formRetentionPeriod, setFormRetentionPeriod] = useState(editDocument?.retentionPeriod ?? '');
-  const [formParentDocId, setFormParentDocId] = useState(editDocument?.parentDocumentId ?? '');
-  const [formReferences, setFormReferences] = useState(editDocument?.references ?? '');
-
-  // N1 specific
-  const [formN1RegulatoryFramework, setFormN1RegulatoryFramework] = useState('');
-
-  // N4 specific
-  const [formN4GeneratesRecords, setFormN4GeneratesRecords] = useState(false);
-  const [formN4RecordLifecycle, setFormN4RecordLifecycle] = useState('');
-  const [formN4RecordTemplateName, setFormN4RecordTemplateName] = useState('');
-  const [formN4AutoNumbering, setFormN4AutoNumbering] = useState('');
-  const [formN4DataIntegrity, setFormN4DataIntegrity] = useState('');
-
-  // Section collapse state
-  const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>({
-    identification: true,
-    scope: true,
-    hierarchy: true,
-    n1specific: true,
-    n4specific: true,
-  });
-
-  const toggleSection = (id: string) => {
-    setSectionOpen(prev => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  const isFormValid = formDocNumber.trim() !== '' && formTitle.trim() !== '';
-
-  const handleSave = (status: 'Draft' | 'In Review') => {
-    onSave({
-      documentNumber: formDocNumber.trim(),
-      title: formTitle.trim(),
-      type: formType,
-      description: formDescription.trim(),
-      department: formDepartment.trim(),
-      classification: formClassification,
-      documentLevel: formLevel,
-      scope: formScope.trim(),
-      retentionPeriod: formRetentionPeriod.trim(),
-      parentDocumentId: formParentDocId || '',
-      references: formReferences.trim(),
-      n1RegulatoryFramework: formN1RegulatoryFramework,
-      n4GeneratesRecords: formN4GeneratesRecords,
-      n4RecordLifecycle: formN4RecordLifecycle,
-      n4RecordTemplateName: formN4RecordTemplateName,
-      n4AutoNumbering: formN4AutoNumbering,
-      n4DataIntegrity: formN4DataIntegrity,
-    });
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* ── Level indicator ── */}
-      <div className={cn('flex items-center gap-3 px-4 py-3 rounded-lg border', levelColors[formLevel])}>
-        <div className={cn('w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold bg-white/50 dark:bg-black/20')}>
-          N{formLevel}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-medium text-sm">{levelLabels[formLevel]}</p>
-          <p className="text-xs opacity-80 mt-0.5">{levelDescriptions[formLevel]}</p>
-        </div>
-        {formLevel === 4 && (
-          <Badge className="bg-amber-200 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300 border-0 text-xs gap-1">
-            <Sparkles className="h-3 w-3" />
-            Record Template
-          </Badge>
-        )}
-      </div>
-
-      {/* ══════ Section 1: Document Identification ══════ */}
-      <Collapsible open={sectionOpen.identification} onOpenChange={() => toggleSection('identification')}>
-        <CollapsibleTrigger className="w-full">
-          <div className="flex items-center gap-3 px-4 py-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors text-left">
-            <CheckCircle2 className={cn('h-4 w-4 shrink-0', formDocNumber && formTitle ? 'text-green-600' : 'text-muted-foreground/30')} />
-            <span className="text-sm font-medium flex-1">1. Document Identification / Identification du document</span>
-            <Badge variant="outline" className="text-[10px]">ISO 13485 4.2.3(a)</Badge>
-            {sectionOpen.identification ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-          </div>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="px-4 py-4 space-y-4 border-x border-b rounded-b-lg">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Document Number * / Numero de document *</Label>
-                <Input value={formDocNumber} onChange={(e) => setFormDocNumber(e.target.value)} placeholder="SOP-QMS-XXX" />
-                <p className="text-[11px] text-muted-foreground">Enter the document number following your naming convention</p>
-              </div>
-              <div className="grid gap-2">
-                <Label>Type * / Type *</Label>
-                <Select value={formType} onValueChange={(v) => setFormType(v as DocumentType)}>
-                  <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
-                  <SelectContent>
-                    {documentTypes.map(type => (
-                      <SelectItem key={type} value={type}>{type}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label>Title * / Titre *</Label>
-              <Input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} placeholder="Document title" />
-            </div>
-            <div className="grid gap-2">
-              <Label>Description / Description</Label>
-              <Textarea value={formDescription} onChange={(e) => setFormDescription(e.target.value)} placeholder="Document description" rows={3} />
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="grid gap-2">
-                <Label>Classification</Label>
-                <Select value={formClassification} onValueChange={(v) => setFormClassification(v as DocumentClassification)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {documentClassifications.map(c => (
-                      <SelectItem key={c} value={c}>{classificationLabels[c]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Document Level * / Niveau *</Label>
-                <Select value={String(formLevel)} onValueChange={(v) => setFormLevel(Number(v) as DocumentLevel)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {documentLevels.map(l => (
-                      <SelectItem key={l} value={String(l)}>{levelLabels[l]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Department / Departement</Label>
-                <Input value={formDepartment} onChange={(e) => setFormDepartment(e.target.value)} placeholder="Quality, Production..." />
-              </div>
-            </div>
-            {isEdit && editDocument && (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label className="flex items-center gap-1">Version <Lock className="h-3 w-3 text-muted-foreground" /></Label>
-                  <Input value={editDocument.version} disabled className="bg-muted" />
-                  <p className="text-[11px] text-muted-foreground">Version is managed through revision history</p>
-                </div>
-                <div className="grid gap-2">
-                  <Label>Retention Period / Periode de conservation</Label>
-                  <Input value={formRetentionPeriod} onChange={(e) => setFormRetentionPeriod(e.target.value)} placeholder="e.g. 5 years" />
-                </div>
-              </div>
-            )}
-            {!isEdit && (
-              <div className="grid gap-2">
-                <Label>Retention Period / Periode de conservation</Label>
-                <Input value={formRetentionPeriod} onChange={(e) => setFormRetentionPeriod(e.target.value)} placeholder="e.g. 5 years, 15 years..." />
-              </div>
-            )}
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
-
-      {/* ══════ Section 2: Scope & Description ══════ */}
-      <Collapsible open={sectionOpen.scope} onOpenChange={() => toggleSection('scope')}>
-        <CollapsibleTrigger className="w-full">
-          <div className="flex items-center gap-3 px-4 py-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors text-left">
-            <CheckCircle2 className={cn('h-4 w-4 shrink-0', formScope ? 'text-green-600' : 'text-muted-foreground/30')} />
-            <span className="text-sm font-medium flex-1">2. Scope / Périmètre d'application</span>
-            <Badge variant="outline" className="text-[10px]">ISO 13485 4.2.3(b)</Badge>
-            {sectionOpen.scope ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-          </div>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="px-4 py-4 space-y-4 border-x border-b rounded-b-lg">
-            <div className="grid gap-2">
-              <Label>Scope / Périmètre</Label>
-              <Textarea value={formScope} onChange={(e) => setFormScope(e.target.value)} placeholder="What is covered? Which sites, processes, products are in scope?" rows={3} />
-            </div>
-            <div className="grid gap-2">
-              <Label>References / References</Label>
-              <Textarea value={formReferences} onChange={(e) => setFormReferences(e.target.value)} placeholder="External references, regulatory standards, linked documents..." rows={2} />
-            </div>
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
-
-      {/* ══════ Section 3: Hierarchy ══════ */}
-      <Collapsible open={sectionOpen.hierarchy} onOpenChange={() => toggleSection('hierarchy')}>
-        <CollapsibleTrigger className="w-full">
-          <div className="flex items-center gap-3 px-4 py-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors text-left">
-            <GitBranch className="h-4 w-4 text-muted-foreground shrink-0" />
-            <span className="text-sm font-medium flex-1">3. Document Hierarchy / Hiérarchie</span>
-            <Badge variant="outline" className="text-[10px]">ISO 13485 4.2.3</Badge>
-            {sectionOpen.hierarchy ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-          </div>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="px-4 py-4 space-y-4 border-x border-b rounded-b-lg">
-            {/* N1 = no parent required */}
-            {formLevel === 1 && (
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800">
-                <Layers className="h-5 w-5 text-purple-500" />
-                <div>
-                  <p className="text-sm font-medium text-purple-700 dark:text-purple-300">N1 — Top-Level Document</p>
-                  <p className="text-xs text-purple-600/70 dark:text-purple-400/60">N1 policies do not require a parent document. They govern N2 SOPs.</p>
-                </div>
-              </div>
-            )}
-            {/* N2-N4 = parent required */}
-            {formLevel > 1 && (
-              <div className="grid gap-2">
-                <Label>Parent Document * / Document parent *</Label>
-                <Select value={formParentDocId} onValueChange={setFormParentDocId}>
-                  <SelectTrigger><SelectValue placeholder="Select parent document" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None (top-level)</SelectItem>
-                    {documents.filter(d => d.status === 'Approved').map(d => (
-                      <SelectItem key={d.id} value={d.id}>
-                        <span className="flex items-center gap-2">
-                          <Badge className={cn('text-[9px] px-1', levelColors[d.documentLevel || 1])} variant="secondary">
-                            N{d.documentLevel || 1}
-                          </Badge>
-                          {d.documentNumber} — {d.title}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-muted-foreground">
-                  {formLevel === 2 && 'N2 SOPs must reference an N1 Policy parent'}
-                  {formLevel === 3 && 'N3 WIs must reference an N2 SOP parent'}
-                  {formLevel === 4 && 'N4 Forms/Records must reference an N3 WI parent'}
-                </p>
-              </div>
-            )}
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
-
-      {/* ══════ Section 4: N1-Specific — Regulatory Framework ══════ */}
-      {formLevel === 1 && (
-        <Collapsible open={sectionOpen.n1specific} onOpenChange={() => toggleSection('n1specific')}>
-          <CollapsibleTrigger className="w-full">
-            <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/10 hover:bg-purple-50 dark:hover:bg-purple-950/20 transition-colors text-left">
-              <ShieldCheck className="h-4 w-4 text-purple-500 shrink-0" />
-              <span className="text-sm font-medium flex-1">4. N1 — Regulatory Framework / Référentiel réglementaire</span>
-              <Badge className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-0 text-[10px]">N1 only</Badge>
-              {sectionOpen.n1specific ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-            </div>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className="px-4 py-4 space-y-4 border-x border-b border-purple-200 dark:border-purple-800 rounded-b-lg">
-              <div className="grid gap-2">
-                <Label>Regulatory Framework / Référentiel réglementaire</Label>
-                <Textarea
-                  value={formN1RegulatoryFramework}
-                  onChange={(e) => setFormN1RegulatoryFramework(e.target.value)}
-                  placeholder="ISO 13485:2016, FDA 21 CFR 820, EU MDR 2017/745, ICH Q10..."
-                  rows={3}
-                />
-                <p className="text-[11px] text-muted-foreground">N1: Identify all regulatory frameworks this policy maps to</p>
-              </div>
-              <div className="flex items-center gap-2 p-3 rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
-                <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
-                <p className="text-xs text-amber-700 dark:text-amber-400">N1 policies require Management Review per ISO 13485 clause 5.6</p>
-              </div>
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-      )}
-
-      {/* ══════ Section 4: N4-Specific — Record Template ══════ */}
-      {formLevel === 4 && (
-        <Collapsible open={sectionOpen.n4specific} onOpenChange={() => toggleSection('n4specific')}>
-          <CollapsibleTrigger className="w-full">
-            <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/10 hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors text-left">
-              <Sparkles className="h-4 w-4 text-amber-500 shrink-0" />
-              <span className="text-sm font-medium flex-1">4. N4 — Record Template / Template d'enregistrement</span>
-              <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-0 text-[10px]">N4 only</Badge>
-              {sectionOpen.n4specific ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-            </div>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className="px-4 py-4 space-y-4 border-x border-b border-amber-200 dark:border-amber-800 rounded-b-lg">
-              {/* Info banner */}
-              <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
-                <Sparkles className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300">N4 Record Template</p>
-                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
-                    Upon approval, this N4 form generates record instances. Each instance follows its own
-                    validation workflow (Draft → Review → Approved) with electronic signatures per 21 CFR Part 11.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <Checkbox
-                  id="n4-generates-records"
-                  checked={formN4GeneratesRecords}
-                  onCheckedChange={(v) => setFormN4GeneratesRecords(Boolean(v))}
-                />
-                <Label htmlFor="n4-generates-records" className="text-sm font-normal cursor-pointer">
-                  This form generates records (instances) / Ce formulaire génère des enregistrements
-                </Label>
-              </div>
-
-              {formN4GeneratesRecords && (
-                <>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label>Record Lifecycle / Cycle de vie</Label>
-                      <Select value={formN4RecordLifecycle} onValueChange={setFormN4RecordLifecycle}>
-                        <SelectTrigger><SelectValue placeholder="Select lifecycle..." /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="draft-review-approved">Draft → Review → Approved → Archived</SelectItem>
-                          <SelectItem value="draft-qa-approved">Draft → QA Review → Approved → Archived</SelectItem>
-                          <SelectItem value="draft-dual-approved">Draft → Dual Review → Approved → Archived</SelectItem>
-                          <SelectItem value="immediate-esig">Immediate (auto-approved with e-signature)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Record Template Name / Nom du template</Label>
-                      <Input
-                        value={formN4RecordTemplateName}
-                        onChange={(e) => setFormN4RecordTemplateName(e.target.value)}
-                        placeholder="e.g. BATCH-RECORD, INSPECTION-REPORT"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label>Auto-Numbering Format</Label>
-                      <Input
-                        value={formN4AutoNumbering}
-                        onChange={(e) => setFormN4AutoNumbering(e.target.value)}
-                        placeholder="REC-{YYYY}-{NNN}"
-                      />
-                      <p className="text-[11px] text-muted-foreground">Use {'{YYYY}'} for year, {'{NNN}'} for sequential number</p>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Data Integrity (ALCOA+)</Label>
-                      <Select value={formN4DataIntegrity} onValueChange={setFormN4DataIntegrity}>
-                        <SelectTrigger><SelectValue placeholder="Select compliance level..." /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="full-alcoa">Full ALCOA+ (all 9 principles)</SelectItem>
-                          <SelectItem value="alcoa-core">ALCOA Core (5 principles)</SelectItem>
-                          <SelectItem value="basic">Basic (Attributable, Legible, Accurate)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-      )}
-
-      {/* ══════ Action Buttons ══════ */}
-      <div className="flex items-center justify-between gap-3 pt-2 border-t">
-        <Button variant="outline" onClick={onCancel}>
-          Cancel / Annuler
-        </Button>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => handleSave('Draft')} disabled={!isFormValid} className="gap-1.5">
-            <Save className="h-4 w-4" />
-            {isEdit ? 'Save Changes' : 'Save Draft'}
-          </Button>
-          <Button onClick={() => handleSave('In Review')} disabled={!isFormValid} className="gap-1.5">
-            <ArrowRight className="h-4 w-4" />
-            {isEdit ? 'Save & Submit' : 'Create & Submit'}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
-// Main Document Control View
-// ═══════════════════════════════════════════════════════════════
-
 export function DocumentControlView() {
   const { currentUser, hasPermission } = useAuth();
   const documents = useQMSStore(state => state.documents);
@@ -563,8 +116,6 @@ export function DocumentControlView() {
 
   // Dialogs
   const [showNewDocDialog, setShowNewDocDialog] = useState(false);
-  const [showEditDialog, setShowEditDialog] = useState(false);
-  const [editDoc, setEditDoc] = useState<Document | null>(null);
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
@@ -595,73 +146,9 @@ export function DocumentControlView() {
     return documents.filter(d => d.parentDocumentId === docId);
   };
 
-  // ── Create document ──
-  const handleCreate = (data: any) => {
-    createDocument({
-      documentNumber: data.documentNumber,
-      title: data.title,
-      type: data.type,
-      version: '1.0',
-      status: 'Draft',
-      description: data.description || undefined,
-      department: data.department || undefined,
-      classification: data.classification,
-      documentLevel: data.documentLevel,
-      scope: data.scope || undefined,
-      retentionPeriod: data.retentionPeriod || undefined,
-      parentDocumentId: data.parentDocumentId || undefined,
-      references: data.references || undefined,
-      owner: currentUser?.fullName || currentUser?.email,
-      createdById: currentUser?.id,
-      authorId: currentUser?.id,
-      organizationId: 'org-001',
-      signatures: [],
-    });
-    setShowNewDocDialog(false);
-  };
+  // No more manual form state — DocumentCreateForm handles everything
 
-  // ── Edit document (only Draft status) ──
-  const handleEdit = (data: any) => {
-    if (!editDoc) return;
-    updateDocument(editDoc.id, {
-      documentNumber: data.documentNumber,
-      title: data.title,
-      type: data.type,
-      description: data.description || undefined,
-      department: data.department || undefined,
-      classification: data.classification,
-      documentLevel: data.documentLevel,
-      scope: data.scope || undefined,
-      retentionPeriod: data.retentionPeriod || undefined,
-      parentDocumentId: data.parentDocumentId || undefined,
-      references: data.references || undefined,
-    });
-    setShowEditDialog(false);
-    setEditDoc(null);
-    // Refresh detail if open
-    if (selectedDoc?.id === editDoc.id) {
-      setSelectedDoc({
-        ...editDoc,
-        documentNumber: data.documentNumber,
-        title: data.title,
-        type: data.type,
-        description: data.description,
-        department: data.department,
-        classification: data.classification,
-        documentLevel: data.documentLevel,
-        scope: data.scope,
-        retentionPeriod: data.retentionPeriod,
-        parentDocumentId: data.parentDocumentId || undefined,
-        references: data.references,
-      });
-    }
-  };
-
-  // ── Open edit dialog for Draft docs ──
-  const openEdit = (doc: Document) => {
-    setEditDoc(doc);
-    setShowEditDialog(true);
-  };
+  // Create is now handled by DocumentCreateForm inside the dialog
 
   // Open detail dialog
   const openDetail = (doc: Document) => {
@@ -765,14 +252,14 @@ export function DocumentControlView() {
           <p className="text-muted-foreground mt-1">Gestion des documents qualité / Quality Document Management</p>
         </div>
         {hasPermission('documents.create') && (
-          <Button onClick={() => setShowNewDocDialog(true)}>
+          <Button onClick={() => { setShowNewDocDialog(true); }}>
             <Plus className="h-4 w-4 mr-2" />
             New Document
           </Button>
         )}
       </div>
 
-      {/* Summary cards — status + level */}
+      {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-3">
         <Card>
           <CardContent className="pt-4 pb-4">
@@ -819,39 +306,38 @@ export function DocumentControlView() {
             <span className="text-2xl font-bold text-red-600">{summaryCounts.obsolete}</span>
           </CardContent>
         </Card>
-        {/* Level cards — clickable to filter */}
-        <Card className="cursor-pointer hover:ring-2 hover:ring-purple-300 transition-all" onClick={() => setLevelFilter(levelFilter === '1' ? 'all' : '1')}>
+        <Card className="cursor-pointer hover:ring-2 hover:ring-purple-300" onClick={() => setLevelFilter(levelFilter === '1' ? 'all' : '1')}>
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-2">
               <Badge className={cn('text-[10px] px-1.5', levelColors[1])} variant="secondary">N1</Badge>
-              <span className="text-xs text-muted-foreground">Policy</span>
+              <span className="text-sm text-muted-foreground">Policy</span>
             </div>
             <span className="text-2xl font-bold text-purple-600">{summaryCounts.n1}</span>
           </CardContent>
         </Card>
-        <Card className="cursor-pointer hover:ring-2 hover:ring-teal-300 transition-all" onClick={() => setLevelFilter(levelFilter === '2' ? 'all' : '2')}>
+        <Card className="cursor-pointer hover:ring-2 hover:ring-teal-300" onClick={() => setLevelFilter(levelFilter === '2' ? 'all' : '2')}>
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-2">
               <Badge className={cn('text-[10px] px-1.5', levelColors[2])} variant="secondary">N2</Badge>
-              <span className="text-xs text-muted-foreground">SOP</span>
+              <span className="text-sm text-muted-foreground">SOP</span>
             </div>
             <span className="text-2xl font-bold text-teal-600">{summaryCounts.n2}</span>
           </CardContent>
         </Card>
-        <Card className="cursor-pointer hover:ring-2 hover:ring-cyan-300 transition-all" onClick={() => setLevelFilter(levelFilter === '3' ? 'all' : '3')}>
+        <Card className="cursor-pointer hover:ring-2 hover:ring-cyan-300" onClick={() => setLevelFilter(levelFilter === '3' ? 'all' : '3')}>
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-2">
               <Badge className={cn('text-[10px] px-1.5', levelColors[3])} variant="secondary">N3</Badge>
-              <span className="text-xs text-muted-foreground">WI</span>
+              <span className="text-sm text-muted-foreground">WI</span>
             </div>
             <span className="text-2xl font-bold text-cyan-600">{summaryCounts.n3}</span>
           </CardContent>
         </Card>
-        <Card className="cursor-pointer hover:ring-2 hover:ring-slate-300 transition-all" onClick={() => setLevelFilter(levelFilter === '4' ? 'all' : '4')}>
+        <Card className="cursor-pointer hover:ring-2 hover:ring-slate-300" onClick={() => setLevelFilter(levelFilter === '4' ? 'all' : '4')}>
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-2">
               <Badge className={cn('text-[10px] px-1.5', levelColors[4])} variant="secondary">N4</Badge>
-              <span className="text-xs text-muted-foreground">Form/Rec</span>
+              <span className="text-sm text-muted-foreground">Form/Rec</span>
             </div>
             <span className="text-2xl font-bold">{summaryCounts.n4}</span>
           </CardContent>
@@ -870,14 +356,15 @@ export function DocumentControlView() {
           />
         </div>
         <Select value={levelFilter} onValueChange={setLevelFilter}>
-          <SelectTrigger className="w-[170px]">
+          <SelectTrigger className="w-[160px]">
             <SelectValue placeholder="Level" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Levels</SelectItem>
-            {documentLevels.map(l => (
-              <SelectItem key={l} value={String(l)}>{levelLabels[l]}</SelectItem>
-            ))}
+            <SelectItem value="1">N1 — Policy</SelectItem>
+            <SelectItem value="2">N2 — SOP</SelectItem>
+            <SelectItem value="3">N3 — WI</SelectItem>
+            <SelectItem value="4">N4 — Form/Record</SelectItem>
           </SelectContent>
         </Select>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -937,6 +424,7 @@ export function DocumentControlView() {
                               <p className="text-xs text-muted-foreground truncate max-w-xs">{doc.description}</p>
                             )}
                           </div>
+                          {/* Parent/child link indicators */}
                           {(parentDoc || childDocs.length > 0) && (
                             <div className="flex items-center gap-1 mt-0.5">
                               <Link2 className="h-3 w-3 text-muted-foreground" />
@@ -955,7 +443,7 @@ export function DocumentControlView() {
                       <TableCell>
                         {doc.documentLevel && (
                           <Badge className={cn('text-xs font-mono', levelColors[doc.documentLevel])} variant="secondary">
-                            {levelShortLabels[doc.documentLevel]}
+                            {levelLabels[doc.documentLevel]}
                           </Badge>
                         )}
                       </TableCell>
@@ -989,11 +477,10 @@ export function DocumentControlView() {
                               <Eye className="mr-2 h-4 w-4" />
                               View Details
                             </DropdownMenuItem>
-                            {/* ✅ FIX: Edit opens edit form for Draft documents */}
-                            {hasPermission('documents.update') && doc.status === 'Draft' && (
-                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openEdit(doc); }}>
+                            {hasPermission('documents.update') && doc.status !== 'Obsolete' && (
+                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openDetail(doc); }}>
                                 <Edit className="mr-2 h-4 w-4" />
-                                Edit Document
+                                Edit
                               </DropdownMenuItem>
                             )}
                             {hasPermission('documents.approve') && getNextStatus(doc.status) && doc.status !== 'Obsolete' && (
@@ -1037,39 +524,17 @@ export function DocumentControlView() {
         </CardContent>
       </Card>
 
-      {/* ══════ Create Document Dialog ══════ */}
+      {/* Create Document Dialog — Rich Template with Level Selector */}
       <Dialog open={showNewDocDialog} onOpenChange={setShowNewDocDialog}>
         <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Plus className="h-5 w-5 text-primary" />
+              <FileText className="h-5 w-5 text-primary" />
               Create New Document / Nouveau Document
             </DialogTitle>
           </DialogHeader>
-          <DocumentForm
-            onSave={handleCreate}
-            onCancel={() => setShowNewDocDialog(false)}
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* ══════ Edit Document Dialog (Draft only) ══════ */}
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Edit className="h-5 w-5 text-primary" />
-              Edit Document / Modifier le document
-              {editDoc && (
-                <Badge variant="outline" className="font-mono text-xs ml-2">{editDoc.documentNumber}</Badge>
-              )}
-            </DialogTitle>
-          </DialogHeader>
-          <DocumentForm
-            editDocument={editDoc}
-            onSave={handleEdit}
-            onCancel={() => { setShowEditDialog(false); setEditDoc(null); }}
-            isEdit
+          <DocumentCreateForm
+            onClose={() => setShowNewDocDialog(false)}
           />
         </DialogContent>
       </Dialog>
@@ -1168,6 +633,12 @@ export function DocumentControlView() {
                     <div>
                       <span className="text-muted-foreground">Effective Date:</span>{' '}
                       <span className="font-medium">{formatDate(selectedDoc.effectiveDate)}</span>
+                    </div>
+                  )}
+                  {selectedDoc.expirationDate && (
+                    <div>
+                      <span className="text-muted-foreground">Expiration:</span>{' '}
+                      <span className="font-medium">{formatDate(selectedDoc.expirationDate)}</span>
                     </div>
                   )}
                   {selectedDoc.lastReviewed && (
@@ -1270,34 +741,22 @@ export function DocumentControlView() {
                   </div>
                 )}
 
-                {/* Action Buttons */}
-                <div className="flex gap-2">
-                  {/* ✅ FIX: Edit button for Draft documents in detail view */}
-                  {hasPermission('documents.update') && selectedDoc.status === 'Draft' && (
-                    <Button variant="outline" className="flex-1" onClick={() => {
-                      setShowDetailDialog(false);
-                      openEdit(selectedDoc);
-                    }}>
-                      <Edit className="h-4 w-4 mr-2" />
-                      Edit Document / Modifier
-                    </Button>
-                  )}
-                  {hasPermission('documents.approve') && getNextStatus(selectedDoc.status) && selectedDoc.status !== 'Obsolete' && (
-                    <Button className="flex-1" onClick={() => handleAdvanceStatus(selectedDoc)}>
-                      {getNextStatus(selectedDoc.status) === 'Approved' ? (
-                        <>
-                          <ShieldCheck className="h-4 w-4 mr-2" />
-                          Approve with E-Signature
-                        </>
-                      ) : (
-                        <>
-                          Advance to {getNextStatus(selectedDoc.status)}
-                          <ArrowRight className="h-4 w-4 ml-2" />
-                        </>
-                      )}
-                    </Button>
-                  )}
-                </div>
+                {/* Advance Status Button */}
+                {hasPermission('documents.approve') && getNextStatus(selectedDoc.status) && selectedDoc.status !== 'Obsolete' && (
+                  <Button className="w-full" onClick={() => handleAdvanceStatus(selectedDoc)}>
+                    {getNextStatus(selectedDoc.status) === 'Approved' ? (
+                      <>
+                        <ShieldCheck className="h-4 w-4 mr-2" />
+                        Approve with Electronic Signature
+                      </>
+                    ) : (
+                      <>
+                        Advance to {getNextStatus(selectedDoc.status)}
+                        <ArrowRight className="h-4 w-4 ml-2" />
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
             </>
           )}
