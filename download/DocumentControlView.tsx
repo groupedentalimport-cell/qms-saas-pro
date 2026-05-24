@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { createDocument, updateDocument } from '@/services/documentService';
 import type { Document, DocumentType, DocumentStatus, DocumentLevel, DocumentClassification, SignatureType, ElectronicSignature } from '@/types/qms';
 import { ElectronicSignatureModal } from '@/components/shared/ElectronicSignatureModal';
-import { DocumentCreateForm } from './DocumentCreateForm';
+
 import { cn, formatDate } from '@/lib/utils';
 import {
   FileText,
@@ -146,9 +146,55 @@ export function DocumentControlView() {
     return documents.filter(d => d.parentDocumentId === docId);
   };
 
-  // No more manual form state — DocumentCreateForm handles everything
+  // Create form state
+  const [formDocNumber, setFormDocNumber] = useState('');
+  const [formTitle, setFormTitle] = useState('');
+  const [formType, setFormType] = useState<DocumentType>('SOP');
+  const [formDescription, setFormDescription] = useState('');
+  const [formDepartment, setFormDepartment] = useState('');
+  const [formClassification, setFormClassification] = useState<DocumentClassification>('Internal');
+  const [formLevel, setFormLevel] = useState<DocumentLevel>(2);
+  const [formScope, setFormScope] = useState('');
+  const [formRetentionPeriod, setFormRetentionPeriod] = useState('');
+  const [formParentDocId, setFormParentDocId] = useState('');
 
-  // Create is now handled by DocumentCreateForm inside the dialog
+  const resetForm = () => {
+    setFormDocNumber('');
+    setFormTitle('');
+    setFormType('SOP');
+    setFormDescription('');
+    setFormDepartment('');
+    setFormClassification('Internal');
+    setFormLevel(2);
+    setFormScope('');
+    setFormRetentionPeriod('');
+    setFormParentDocId('');
+  };
+
+  const handleCreate = () => {
+    if (!formDocNumber.trim() || !formTitle.trim()) return;
+    createDocument({
+      documentNumber: formDocNumber.trim(),
+      title: formTitle.trim(),
+      type: formType,
+      version: '1.0',
+      status: 'Draft',
+      description: formDescription.trim() || undefined,
+      department: formDepartment.trim() || undefined,
+      classification: formClassification,
+      documentLevel: formLevel,
+      scope: formScope.trim() || undefined,
+      retentionPeriod: formRetentionPeriod.trim() || undefined,
+      parentDocumentId: formParentDocId || undefined,
+      owner: currentUser?.fullName || currentUser?.email,
+      createdById: currentUser?.id,
+      authorId: currentUser?.id,
+      organizationId: 'org-001',
+      signatures: [],
+    });
+    resetForm();
+    setShowNewDocDialog(false);
+  };
 
   // Open detail dialog
   const openDetail = (doc: Document) => {
@@ -524,18 +570,92 @@ export function DocumentControlView() {
         </CardContent>
       </Card>
 
-      {/* Create Document Dialog — Rich Template with Level Selector */}
+      {/* Create Document Dialog */}
       <Dialog open={showNewDocDialog} onOpenChange={setShowNewDocDialog}>
-        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-primary" />
-              Create New Document / Nouveau Document
-            </DialogTitle>
+            <DialogTitle>Create New Document</DialogTitle>
           </DialogHeader>
-          <DocumentCreateForm
-            onClose={() => setShowNewDocDialog(false)}
-          />
+          <div className="grid gap-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Document Number *</Label>
+                <Input value={formDocNumber} onChange={(e) => setFormDocNumber(e.target.value)} placeholder="SOP-QMS-XXX" />
+              </div>
+              <div className="grid gap-2">
+                <Label>Type *</Label>
+                <Select value={formType} onValueChange={(v) => setFormType(v as DocumentType)}>
+                  <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
+                  <SelectContent>
+                    {documentTypes.map(type => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Title *</Label>
+              <Input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} placeholder="Document title" />
+            </div>
+            <div className="grid gap-2">
+              <Label>Description</Label>
+              <Textarea value={formDescription} onChange={(e) => setFormDescription(e.target.value)} placeholder="Document description" rows={3} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Classification</Label>
+                <Select value={formClassification} onValueChange={(v) => setFormClassification(v as DocumentClassification)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {documentClassifications.map(c => (
+                      <SelectItem key={c} value={c}>{classificationLabels[c]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Document Level</Label>
+                <Select value={String(formLevel)} onValueChange={(v) => setFormLevel(Number(v) as DocumentLevel)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {documentLevels.map(l => (
+                      <SelectItem key={l} value={String(l)}>{levelLabels[l]} — Level {l}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Department</Label>
+                <Input value={formDepartment} onChange={(e) => setFormDepartment(e.target.value)} placeholder="Quality, Production..." />
+              </div>
+              <div className="grid gap-2">
+                <Label>Retention Period</Label>
+                <Input value={formRetentionPeriod} onChange={(e) => setFormRetentionPeriod(e.target.value)} placeholder="e.g. 5 years" />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Scope</Label>
+              <Textarea value={formScope} onChange={(e) => setFormScope(e.target.value)} placeholder="Document scope and applicability" rows={2} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Parent Document</Label>
+              <Select value={formParentDocId} onValueChange={setFormParentDocId}>
+                <SelectTrigger><SelectValue placeholder="Select parent document" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None (top-level)</SelectItem>
+                  {documents.filter(d => d.status === 'Approved').map(d => (
+                    <SelectItem key={d.id} value={d.id}>{d.documentNumber} — {d.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button className="w-full" onClick={handleCreate} disabled={!formDocNumber.trim() || !formTitle.trim()}>
+              Create Document
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
