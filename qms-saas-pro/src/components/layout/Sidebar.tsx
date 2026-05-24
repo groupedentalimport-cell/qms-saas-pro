@@ -30,7 +30,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
+// ScrollArea removed — native scroll is more reliable for sidebar
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 
@@ -189,8 +189,8 @@ export function Sidebar({ activeSection, onSectionChange, collapsed, onToggle }:
         )}
       </div>
 
-      {/* Scrollable content — navigation + settings + toggle, all scroll freely */}
-      <ScrollArea className="flex-1 overflow-y-auto">
+      {/* Scrollable content — native overflow for smooth free scrolling */}
+      <div className="flex-1 overflow-y-auto overscroll-contain" style={{ scrollbarWidth: 'thin' }}>
         <div className="py-2">
           {/* Navigation groups */}
           <nav className="space-y-1 px-2">
@@ -297,7 +297,7 @@ export function Sidebar({ activeSection, onSectionChange, collapsed, onToggle }:
             </Button>
           </div>
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }
