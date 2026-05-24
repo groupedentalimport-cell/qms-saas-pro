@@ -4,6 +4,8 @@ import { useQMSStore } from '@/lib/demo-store';
 import { useAuth } from '@/contexts/AuthContext';
 import { createTraining, updateTraining, getTrainingOrgSettings } from '@/services/trainingService';
 import { ElectronicSignatureModal } from '@/components/shared/ElectronicSignatureModal';
+import { RichFormRenderer } from '@/components/shared/RichFormRenderer';
+import { TRAINING_FORM_TEMPLATE } from '@/lib/templates/training-form-template';
 import { cn, formatDate } from '@/lib/utils';
 import type { Training, TrainingType, TrainingStatus, SignatureType } from '@/types/qms';
 import {
@@ -73,13 +75,8 @@ export function TrainingView() {
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [pendingCompleteTraining, setPendingCompleteTraining] = useState<Training | null>(null);
 
-  // Create form state
-  const [formTitle, setFormTitle] = useState('');
-  const [formType, setFormType] = useState<TrainingType>('SOP');
-  const [formDescription, setFormDescription] = useState('');
-  const [formAssignedTo, setFormAssignedTo] = useState('');
-  const [formDueDate, setFormDueDate] = useState('');
-  const [formDocumentId, setFormDocumentId] = useState('');
+  // Rich form state
+  const [formValues, setFormValues] = useState<Record<string, unknown>>({});
 
   // Helpers
   const getUserName = (userId: string) => {
@@ -121,28 +118,35 @@ export function TrainingView() {
 
   // Form helpers
   const resetForm = () => {
-    setFormTitle('');
-    setFormType('SOP');
-    setFormDescription('');
-    setFormAssignedTo('');
-    setFormDueDate('');
-    setFormDocumentId('');
+    setFormValues({});
   };
 
-  const handleCreate = () => {
-    if (!formTitle.trim() || !formAssignedTo) return;
+  const handleRichFormSubmit = (values: Record<string, unknown>, signatureHash?: string) => {
+    const title = String(values.title || '');
+    const type = String(values.training_type || values.trainingType || 'SOP') as TrainingType;
+    const assignedTo = String(values.assigned_to || values.assignedTo || '');
+    const dueDate = String(values.target_completion_date || values.targetCompletionDate || '');
+    const documentId = String(values.linked_document_id || values.linkedDocumentId || '');
+
+    if (!title.trim() || !assignedTo) return;
+
     createTraining({
-      title: formTitle.trim(),
-      description: formDescription.trim() || undefined,
-      type: formType,
+      title: title.trim(),
+      description: String(values.description || '').trim() || undefined,
+      type,
       status: 'Planned',
-      assignedTo: formAssignedTo,
-      dueDate: formDueDate ? new Date(formDueDate).toISOString() : new Date().toISOString(),
-      documentId: formDocumentId && formDocumentId !== 'none' ? formDocumentId : undefined,
+      assignedTo,
+      dueDate: dueDate ? new Date(dueDate).toISOString() : new Date().toISOString(),
+      documentId: documentId && documentId !== 'none' ? documentId : undefined,
       organizationId: 'org-001',
     });
-    resetForm();
+
+    setFormValues({});
     setShowCreateDialog(false);
+  };
+
+  const handleRichFormSaveDraft = (values: Record<string, unknown>) => {
+    setFormValues(values);
   };
 
   const openDetail = (training: Training) => {
@@ -397,69 +401,20 @@ export function TrainingView() {
         </CardContent>
       </Card>
 
-      {/* ─── Create Training Dialog ─── */}
+      {/* Create Training Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create New Training</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="grid gap-2">
-              <Label>Title *</Label>
-              <Input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} placeholder="Training title" />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Type *</Label>
-                <Select value={formType} onValueChange={(v) => setFormType(v as TrainingType)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {trainingTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Due Date *</Label>
-                <Input type="date" value={formDueDate} onChange={(e) => setFormDueDate(e.target.value)} />
-              </div>
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Description</Label>
-              <Textarea value={formDescription} onChange={(e) => setFormDescription(e.target.value)} placeholder="Training description..." rows={3} />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Assigned To *</Label>
-                <Select value={formAssignedTo} onValueChange={setFormAssignedTo}>
-                  <SelectTrigger><SelectValue placeholder="Select user" /></SelectTrigger>
-                  <SelectContent>
-                    {profiles.map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.fullName || p.email}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Linked Document</Label>
-                <Select value={formDocumentId || 'none'} onValueChange={setFormDocumentId}>
-                  <SelectTrigger><SelectValue placeholder="Select document" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {approvedDocuments.map(d => (
-                      <SelectItem key={d.id} value={d.id}>{d.documentNumber} — {d.title}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <Button className="w-full" onClick={handleCreate} disabled={!formTitle.trim() || !formAssignedTo}>
-              Create Training
-            </Button>
-          </div>
+          <RichFormRenderer
+            template={TRAINING_FORM_TEMPLATE}
+            values={formValues}
+            onChange={setFormValues}
+            mode="edit"
+            onSubmit={handleRichFormSubmit}
+            onSaveDraft={handleRichFormSaveDraft}
+          />
         </DialogContent>
       </Dialog>
 

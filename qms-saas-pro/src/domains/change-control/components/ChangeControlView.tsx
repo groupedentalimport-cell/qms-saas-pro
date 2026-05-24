@@ -9,6 +9,8 @@ import type {
   ChangeControlPriority, ChangeControlCategory, SignatureType, ElectronicSignature,
 } from '@/types/qms';
 import { ElectronicSignatureModal } from '@/components/shared/ElectronicSignatureModal';
+import { RichFormRenderer } from '@/components/shared/RichFormRenderer';
+import { CHANGE_CONTROL_FORM_TEMPLATE } from '@/lib/templates/change-control-form-template';
 import { cn, formatDate } from '@/lib/utils';
 import {
   ArrowLeftRight, Plus, Search, Eye, ArrowRight, CheckCircle2,
@@ -84,21 +86,8 @@ export function ChangeControlView() {
   const [pendingStatusAdvance, setPendingStatusAdvance] = useState<ChangeControl | null>(null);
   const [prereqError, setPrereqError] = useState<string | null>(null);
 
-  // Create form state
-  const [formTitle, setFormTitle] = useState('');
-  const [formType, setFormType] = useState<ChangeControlType>('Planned');
-  const [formPriority, setFormPriority] = useState<ChangeControlPriority>('Medium');
-  const [formCategory, setFormCategory] = useState<ChangeControlCategory>('Process');
-  const [formDescription, setFormDescription] = useState('');
-  const [formJustification, setFormJustification] = useState('');
-  const [formProposedChange, setFormProposedChange] = useState('');
-  const [formRiskAssessment, setFormRiskAssessment] = useState('');
-  const [formImpactAnalysis, setFormImpactAnalysis] = useState('');
-  const [formImplementationPlan, setFormImplementationPlan] = useState('');
-  const [formAssignedTo, setFormAssignedTo] = useState('');
-  const [formDueDate, setFormDueDate] = useState('');
-  const [formLinkedDocId, setFormLinkedDocId] = useState('');
-  const [formLinkedCapaId, setFormLinkedCapaId] = useState('');
+  // Rich form state
+  const [formValues, setFormValues] = useState<Record<string, unknown>>({});
 
   const filteredCCs = changeControls.filter(cc => {
     const matchesSearch = searchTerm === '' ||
@@ -138,24 +127,11 @@ export function ChangeControlView() {
   const approvedDocuments = documents.filter(d => d.status === 'Approved');
 
   const resetForm = () => {
-    setFormTitle('');
-    setFormType('Planned');
-    setFormPriority('Medium');
-    setFormCategory('Process');
-    setFormDescription('');
-    setFormJustification('');
-    setFormProposedChange('');
-    setFormRiskAssessment('');
-    setFormImpactAnalysis('');
-    setFormImplementationPlan('');
-    setFormAssignedTo('');
-    setFormDueDate('');
-    setFormLinkedDocId('');
-    setFormLinkedCapaId('');
+    setFormValues({});
     setPrereqError(null);
   };
 
-  const handleCreate = () => {
+  const handleRichFormSubmit = (values: Record<string, unknown>, signatureHash?: string) => {
     const prereqResult = checkPrerequisites('CHANGE_CONTROL', 'org-001');
     if (!prereqResult.met) {
       setPrereqError(`Prerequisite not met: ${prereqResult.missing.map(p => p.description).join(', ')}`);
@@ -163,29 +139,39 @@ export function ChangeControlView() {
     }
     setPrereqError(null);
 
+    const title = String(values.title || '');
+    const type = String(values.type || 'Planned') as ChangeControlType;
+    const priority = String(values.priority || 'Medium') as ChangeControlPriority;
+    const category = String(values.category || 'Process') as ChangeControlCategory;
+    const assignedTo = String(values.assigned_to || values.assignedTo || '');
+    const dueDate = String(values.target_completion_date || values.targetCompletionDate || '');
+
     createChangeControl({
       ccNumber: `CC-2024-${String(changeControls.length + 1).padStart(3, '0')}`,
-      title: formTitle,
-      type: formType,
+      title,
+      type,
       status: 'Requested',
-      priority: formPriority,
-      category: formCategory,
-      description: formDescription,
-      justification: formJustification,
-      proposedChange: formProposedChange,
-      riskAssessment: formRiskAssessment || undefined,
-      impactAnalysis: formImpactAnalysis || undefined,
-      implementationPlan: formImplementationPlan || undefined,
-      assignedTo: formAssignedTo,
+      priority,
+      category,
+      description: String(values.current_situation || values.currentSituation || ''),
+      justification: String(values.justification || ''),
+      proposedChange: String(values.proposed_change || values.proposedChange || ''),
+      riskAssessment: String(values.risk_assessment || values.riskAssessment || '') || undefined,
+      impactAnalysis: String(values.impact_analysis || values.impactAnalysis || '') || undefined,
+      implementationPlan: String(values.implementation_plan || values.implementationPlan || '') || undefined,
+      assignedTo,
       requestedBy: currentUser?.id || '',
-      dueDate: formDueDate ? new Date(formDueDate).toISOString() : new Date().toISOString(),
-      linkedDocumentId: formLinkedDocId && formLinkedDocId !== 'none' ? formLinkedDocId : undefined,
-      linkedCapaId: formLinkedCapaId && formLinkedCapaId !== 'none' ? formLinkedCapaId : undefined,
+      dueDate: dueDate ? new Date(dueDate).toISOString() : new Date().toISOString(),
       createdById: currentUser?.id,
       organizationId: 'org-001',
     });
-    resetForm();
+
+    setFormValues({});
     setShowCreateDialog(false);
+  };
+
+  const handleRichFormSaveDraft = (values: Record<string, unknown>) => {
+    setFormValues(values);
   };
 
   const openDetail = (cc: ChangeControl) => {
@@ -435,7 +421,7 @@ export function ChangeControlView() {
 
       {/* Create Change Control Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create New Change Control</DialogTitle>
           </DialogHeader>
@@ -445,120 +431,14 @@ export function ChangeControlView() {
               <p className="text-sm text-red-700 dark:text-red-400">{prereqError}</p>
             </div>
           )}
-          <div className="grid gap-4 py-2">
-            <div className="grid gap-2">
-              <Label>Title *</Label>
-              <Input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} placeholder="Change Control title" />
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="grid gap-2">
-                <Label>Type *</Label>
-                <Select value={formType} onValueChange={(v) => setFormType(v as ChangeControlType)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Planned">Planned</SelectItem>
-                    <SelectItem value="Unplanned">Unplanned</SelectItem>
-                    <SelectItem value="Emergency">Emergency</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Priority *</Label>
-                <Select value={formPriority} onValueChange={(v) => setFormPriority(v as ChangeControlPriority)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Critical">Critical</SelectItem>
-                    <SelectItem value="High">High</SelectItem>
-                    <SelectItem value="Medium">Medium</SelectItem>
-                    <SelectItem value="Low">Low</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Category *</Label>
-                <Select value={formCategory} onValueChange={(v) => setFormCategory(v as ChangeControlCategory)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {allCategories.map(c => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label>Description *</Label>
-              <Textarea value={formDescription} onChange={(e) => setFormDescription(e.target.value)} placeholder="Describe the change..." rows={3} />
-            </div>
-            <div className="grid gap-2">
-              <Label>Justification *</Label>
-              <Textarea value={formJustification} onChange={(e) => setFormJustification(e.target.value)} placeholder="Why is this change needed?" rows={2} />
-            </div>
-            <div className="grid gap-2">
-              <Label>Proposed Change *</Label>
-              <Textarea value={formProposedChange} onChange={(e) => setFormProposedChange(e.target.value)} placeholder="What is the proposed change?" rows={2} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Risk Assessment</Label>
-                <Textarea value={formRiskAssessment} onChange={(e) => setFormRiskAssessment(e.target.value)} placeholder="Risk assessment..." rows={2} />
-              </div>
-              <div className="grid gap-2">
-                <Label>Impact Analysis</Label>
-                <Textarea value={formImpactAnalysis} onChange={(e) => setFormImpactAnalysis(e.target.value)} placeholder="Impact analysis..." rows={2} />
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label>Implementation Plan</Label>
-              <Textarea value={formImplementationPlan} onChange={(e) => setFormImplementationPlan(e.target.value)} placeholder="Implementation plan..." rows={2} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Assigned To *</Label>
-                <Select value={formAssignedTo} onValueChange={setFormAssignedTo}>
-                  <SelectTrigger><SelectValue placeholder="Select user" /></SelectTrigger>
-                  <SelectContent>
-                    {profiles.map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.fullName || p.email}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Due Date *</Label>
-                <Input type="date" value={formDueDate} onChange={(e) => setFormDueDate(e.target.value)} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Linked Document</Label>
-                <Select value={formLinkedDocId} onValueChange={setFormLinkedDocId}>
-                  <SelectTrigger><SelectValue placeholder="Select document" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {approvedDocuments.map(d => (
-                      <SelectItem key={d.id} value={d.id}>{d.documentNumber} - {d.title}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Linked CAPA</Label>
-                <Select value={formLinkedCapaId} onValueChange={setFormLinkedCapaId}>
-                  <SelectTrigger><SelectValue placeholder="Select CAPA" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {capas.map(c => (
-                      <SelectItem key={c.id} value={c.id}>{c.capaNumber} - {c.title}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <Button className="w-full" onClick={handleCreate} disabled={!formTitle || !formDescription || !formJustification || !formProposedChange || !formAssignedTo}>
-              Create Change Control
-            </Button>
-          </div>
+          <RichFormRenderer
+            template={CHANGE_CONTROL_FORM_TEMPLATE}
+            values={formValues}
+            onChange={setFormValues}
+            mode="edit"
+            onSubmit={handleRichFormSubmit}
+            onSaveDraft={handleRichFormSaveDraft}
+          />
         </DialogContent>
       </Dialog>
 

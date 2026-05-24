@@ -8,6 +8,8 @@ import type {
   DeviationSeverity, DeviationCategory, SignatureType,
 } from '@/types/qms';
 import { ElectronicSignatureModal } from '@/components/shared/ElectronicSignatureModal';
+import { RichFormRenderer } from '@/components/shared/RichFormRenderer';
+import { DEVIATION_FORM_TEMPLATE } from '@/lib/templates/deviation-form-template';
 import { cn, formatDate } from '@/lib/utils';
 import {
   AlertTriangle, Plus, Search, Eye, ArrowRight, CheckCircle2,
@@ -79,24 +81,8 @@ export function DeviationView() {
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [pendingStatusAdvance, setPendingStatusAdvance] = useState<Deviation | null>(null);
 
-  // Create form state
-  const [formTitle, setFormTitle] = useState('');
-  const [formType, setFormType] = useState<DeviationType>('Unplanned');
-  const [formSeverity, setFormSeverity] = useState<DeviationSeverity>('Minor');
-  const [formCategory, setFormCategory] = useState<DeviationCategory>('Process');
-  const [formDescription, setFormDescription] = useState('');
-  const [formDeviationDetails, setFormDeviationDetails] = useState('');
-  const [formJustification, setFormJustification] = useState('');
-  const [formRiskAssessment, setFormRiskAssessment] = useState('');
-  const [formCorrectiveAction, setFormCorrectiveAction] = useState('');
-  const [formPreventiveAction, setFormPreventiveAction] = useState('');
-  const [formLotNumber, setFormLotNumber] = useState('');
-  const [formProductCode, setFormProductCode] = useState('');
-  const [formQuantityAffected, setFormQuantityAffected] = useState('');
-  const [formAssignedTo, setFormAssignedTo] = useState('');
-  const [formDueDate, setFormDueDate] = useState('');
-  const [formLinkedCapaId, setFormLinkedCapaId] = useState('');
-  const [formLinkedDocId, setFormLinkedDocId] = useState('');
+  // Rich form state
+  const [formValues, setFormValues] = useState<Record<string, unknown>>({});
 
   const filteredDeviations = deviations.filter(dev => {
     const matchesSearch = searchTerm === '' ||
@@ -135,51 +121,45 @@ export function DeviationView() {
   const approvedDocuments = documents.filter(d => d.status === 'Approved');
 
   const resetForm = () => {
-    setFormTitle('');
-    setFormType('Unplanned');
-    setFormSeverity('Minor');
-    setFormCategory('Process');
-    setFormDescription('');
-    setFormDeviationDetails('');
-    setFormJustification('');
-    setFormRiskAssessment('');
-    setFormCorrectiveAction('');
-    setFormPreventiveAction('');
-    setFormLotNumber('');
-    setFormProductCode('');
-    setFormQuantityAffected('');
-    setFormAssignedTo('');
-    setFormDueDate('');
-    setFormLinkedCapaId('');
-    setFormLinkedDocId('');
+    setFormValues({});
   };
 
-  const handleCreate = () => {
+  const handleRichFormSubmit = (values: Record<string, unknown>, signatureHash?: string) => {
+    const title = String(values.title || '');
+    const type = String(values.type || 'Unplanned') as DeviationType;
+    const severity = String(values.severity || 'Minor') as DeviationSeverity;
+    const category = String(values.category || 'Process') as DeviationCategory;
+    const assignedTo = String(values.assigned_to || values.assignedTo || '');
+    const dueDate = String(values.target_closure_date || values.targetClosureDate || '');
+
     createDeviation({
       devNumber: `DEV-2024-${String(deviations.length + 1).padStart(3, '0')}`,
-      title: formTitle,
-      type: formType,
+      title,
+      type,
       status: 'Open',
-      severity: formSeverity,
-      category: formCategory,
-      description: formDescription,
-      deviationDetails: formDeviationDetails,
-      justification: formJustification || undefined,
-      riskAssessment: formRiskAssessment || undefined,
-      correctiveAction: formCorrectiveAction || undefined,
-      preventiveAction: formPreventiveAction || undefined,
-      lotNumber: formLotNumber || undefined,
-      productCode: formProductCode || undefined,
-      quantityAffected: formQuantityAffected ? parseInt(formQuantityAffected) : undefined,
-      linkedCapaId: formLinkedCapaId && formLinkedCapaId !== 'none' ? formLinkedCapaId : undefined,
-      linkedDocumentId: formLinkedDocId && formLinkedDocId !== 'none' ? formLinkedDocId : undefined,
-      assignedTo: formAssignedTo,
-      dueDate: formDueDate ? new Date(formDueDate).toISOString() : new Date().toISOString(),
+      severity,
+      category,
+      description: String(values.description || ''),
+      deviationDetails: String(values.detailed_description || values.detailedDescription || ''),
+      justification: String(values.justification || '') || undefined,
+      riskAssessment: String(values.risk_assessment || values.riskAssessment || '') || undefined,
+      correctiveAction: String(values.corrective_action || values.correctiveAction || '') || undefined,
+      preventiveAction: String(values.preventive_action || values.preventiveAction || '') || undefined,
+      lotNumber: String(values.lot_number || values.lotNumber || '') || undefined,
+      productCode: String(values.product_code || values.productCode || '') || undefined,
+      quantityAffected: values.quantity_affected ? parseInt(String(values.quantity_affected)) : undefined,
+      assignedTo,
+      dueDate: dueDate ? new Date(dueDate).toISOString() : new Date().toISOString(),
       createdById: currentUser?.id,
       organizationId: 'org-001',
     });
-    resetForm();
+
+    setFormValues({});
     setShowCreateDialog(false);
+  };
+
+  const handleRichFormSaveDraft = (values: Record<string, unknown>) => {
+    setFormValues(values);
   };
 
   const openDetail = (dev: Deviation) => {
@@ -410,144 +390,18 @@ export function DeviationView() {
 
       {/* Create Deviation Dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create New Deviation</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="grid gap-2">
-              <Label>Title *</Label>
-              <Input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} placeholder="Deviation title" />
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="grid gap-2">
-                <Label>Type *</Label>
-                <Select value={formType} onValueChange={(v) => setFormType(v as DeviationType)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Planned">Planned</SelectItem>
-                    <SelectItem value="Unplanned">Unplanned</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Severity *</Label>
-                <Select value={formSeverity} onValueChange={(v) => setFormSeverity(v as DeviationSeverity)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Critical">Critical</SelectItem>
-                    <SelectItem value="Major">Major</SelectItem>
-                    <SelectItem value="Minor">Minor</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Category *</Label>
-                <Select value={formCategory} onValueChange={(v) => setFormCategory(v as DeviationCategory)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {allCategories.map(c => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label>Description *</Label>
-              <Textarea value={formDescription} onChange={(e) => setFormDescription(e.target.value)} placeholder="Describe the deviation..." rows={3} />
-            </div>
-            <div className="grid gap-2">
-              <Label>Deviation Details *</Label>
-              <Textarea value={formDeviationDetails} onChange={(e) => setFormDeviationDetails(e.target.value)} placeholder="Detailed description of the deviation..." rows={3} />
-            </div>
-            {formType === 'Planned' && (
-              <div className="grid gap-2">
-                <Label>Justification (required for Planned deviations) *</Label>
-                <Textarea value={formJustification} onChange={(e) => setFormJustification(e.target.value)} placeholder="Justification for this planned deviation..." rows={2} />
-              </div>
-            )}
-            {formType !== 'Planned' && (
-              <div className="grid gap-2">
-                <Label>Justification</Label>
-                <Textarea value={formJustification} onChange={(e) => setFormJustification(e.target.value)} placeholder="Justification..." rows={2} />
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Risk Assessment</Label>
-                <Textarea value={formRiskAssessment} onChange={(e) => setFormRiskAssessment(e.target.value)} placeholder="Risk assessment..." rows={2} />
-              </div>
-              <div className="grid gap-2">
-                <Label>Corrective Action</Label>
-                <Textarea value={formCorrectiveAction} onChange={(e) => setFormCorrectiveAction(e.target.value)} placeholder="Corrective action..." rows={2} />
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label>Preventive Action</Label>
-              <Textarea value={formPreventiveAction} onChange={(e) => setFormPreventiveAction(e.target.value)} placeholder="Preventive action..." rows={2} />
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="grid gap-2">
-                <Label>Lot Number</Label>
-                <Input value={formLotNumber} onChange={(e) => setFormLotNumber(e.target.value)} placeholder="BN-XXXX" />
-              </div>
-              <div className="grid gap-2">
-                <Label>Product Code</Label>
-                <Input value={formProductCode} onChange={(e) => setFormProductCode(e.target.value)} placeholder="PROD-XXX" />
-              </div>
-              <div className="grid gap-2">
-                <Label>Quantity Affected</Label>
-                <Input type="number" value={formQuantityAffected} onChange={(e) => setFormQuantityAffected(e.target.value)} placeholder="0" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Assigned To *</Label>
-                <Select value={formAssignedTo} onValueChange={setFormAssignedTo}>
-                  <SelectTrigger><SelectValue placeholder="Select user" /></SelectTrigger>
-                  <SelectContent>
-                    {profiles.map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.fullName || p.email}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Due Date *</Label>
-                <Input type="date" value={formDueDate} onChange={(e) => setFormDueDate(e.target.value)} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Linked CAPA</Label>
-                <Select value={formLinkedCapaId} onValueChange={setFormLinkedCapaId}>
-                  <SelectTrigger><SelectValue placeholder="Select CAPA" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {capas.map(c => (
-                      <SelectItem key={c.id} value={c.id}>{c.capaNumber} - {c.title}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Linked Document</Label>
-                <Select value={formLinkedDocId} onValueChange={setFormLinkedDocId}>
-                  <SelectTrigger><SelectValue placeholder="Select document" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {approvedDocuments.map(d => (
-                      <SelectItem key={d.id} value={d.id}>{d.documentNumber} - {d.title}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <Button className="w-full" onClick={handleCreate} disabled={!formTitle || !formDescription || !formDeviationDetails || !formAssignedTo || (formType === 'Planned' && !formJustification)}>
-              Create Deviation
-            </Button>
-          </div>
+          <RichFormRenderer
+            template={DEVIATION_FORM_TEMPLATE}
+            values={formValues}
+            onChange={setFormValues}
+            mode="edit"
+            onSubmit={handleRichFormSubmit}
+            onSaveDraft={handleRichFormSaveDraft}
+          />
         </DialogContent>
       </Dialog>
 
