@@ -4,6 +4,8 @@ import { useQMSStore } from '@/lib/demo-store';
 import { useAuth } from '@/contexts/AuthContext';
 import { createCapa, updateCapa } from '@/services/capaService';
 import { checkPrerequisites } from '@/services/compliance/prerequisiteEngine';
+import { RichFormRenderer } from '@/components/shared/RichFormRenderer';
+import { CAPA_FORM_TEMPLATE } from '@/lib/templates/capa-form-template';
 import type { Capa, CapaStatus, CapaType, CapaPriority, CapaSource, RootCauseCategory } from '@/types/qms';
 import {
   Shield, Plus, Search, Eye, ArrowRight, CheckCircle2, AlertTriangle,
@@ -67,7 +69,10 @@ export function CapaView() {
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [prereqError, setPrereqError] = useState<string | null>(null);
 
-  // Create form state
+  // Rich form state for the new CAPA form
+  const [formValues, setFormValues] = useState<Record<string, unknown>>({});
+
+  // Legacy create form state (kept as fallback for quick creation)
   const [formTitle, setFormTitle] = useState('');
   const [formType, setFormType] = useState<CapaType>('Corrective');
   const [formPriority, setFormPriority] = useState<CapaPriority>('Medium');
@@ -104,8 +109,53 @@ export function CapaView() {
 
   const approvedSops = documents.filter(d => d.type === 'SOP' && d.status === 'Approved');
 
+  // ── Rich form submission handler ──
+  const handleRichFormSubmit = (values: Record<string, unknown>, signatureHash?: string) => {
+    // Prerequisite check
+    const prereqResult = checkPrerequisites('CAPA', 'org-001');
+    if (!prereqResult.met) {
+      setPrereqError(`Prerequisite not met: ${prereqResult.missing.map(p => p.description).join(', ')}`);
+      return;
+    }
+    setPrereqError(null);
+
+    // Map rich form values to CAPA model
+    const title = String(values.problem_title || values.problemTitle || 'New CAPA');
+    const type = String(values.capa_type || values.capaType || 'Corrective') as CapaType;
+    const priority = String(values.priority || 'Medium') as CapaPriority;
+    const source = String(values.source || 'Non-Conformance') as CapaSource;
+    const assignedTo = String(values.assigned_to || values.assignedTo || '');
+    const targetDate = String(values.target_closure_date || values.targetClosureDate || '');
+
+    createCapa({
+      capaNumber: `CAPA-2024-${String(capas.length + 1).padStart(3, '0')}`,
+      title,
+      type,
+      status: 'Open',
+      priority,
+      source,
+      description: String(values.problem_statement || values.problemStatement || ''),
+      problemStatement: String(values.problem_statement || values.problemStatement || ''),
+      rootCauseCategory: 'Method' as RootCauseCategory,
+      assignedTo,
+      dueDate: targetDate ? new Date(targetDate).toISOString() : new Date().toISOString(),
+      createdDate: new Date().toISOString(),
+      linkedDocumentId: undefined,
+      createdById: currentUser?.id,
+      organizationId: 'org-001',
+    });
+
+    setFormValues({});
+    setShowCreateDialog(false);
+  };
+
+  const handleRichFormSaveDraft = (values: Record<string, unknown>) => {
+    // Save draft logic — for now just keep values in state
+    setFormValues(values);
+  };
+
+  // ── Legacy quick-create handler (kept as fallback) ──
   const handleCreate = () => {
-    // Prerequisite check: verify an Approved SOP exists
     const prereqResult = checkPrerequisites('CAPA', 'org-001');
     if (!prereqResult.met) {
       setPrereqError(`Prerequisite not met: ${prereqResult.missing.map(p => p.description).join(', ')}`);
@@ -146,6 +196,7 @@ export function CapaView() {
     setFormDueDate('');
     setFormLinkedDocId('');
     setPrereqError(null);
+    setFormValues({});
   };
 
   const handleAdvanceStatus = (capa: Capa) => {
@@ -174,7 +225,7 @@ export function CapaView() {
             <Shield className="h-6 w-6 text-primary" />
             CAPA Management
           </h1>
-          <p className="text-muted-foreground mt-1">Corrective and Preventive Actions</p>
+          <p className="text-muted-foreground mt-1">Corrective and Preventive Actions (ISO 13485 8.5.2 / 8.5.3)</p>
         </div>
         {hasPermission('capa.create') && (
           <Button onClick={() => { resetForm(); setShowCreateDialog(true); }}>
@@ -325,9 +376,9 @@ export function CapaView() {
         </CardContent>
       </Card>
 
-      {/* Create CAPA Dialog */}
+      {/* ─── Create CAPA Dialog — Rich Form ─── */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create New CAPA</DialogTitle>
           </DialogHeader>
@@ -337,103 +388,14 @@ export function CapaView() {
               <p className="text-sm text-red-700 dark:text-red-400">{prereqError}</p>
             </div>
           )}
-          <div className="grid gap-4 py-2">
-            <div className="grid gap-2">
-              <Label>Title *</Label>
-              <Input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} placeholder="CAPA title" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Type *</Label>
-                <Select value={formType} onValueChange={(v) => setFormType(v as CapaType)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Corrective">Corrective</SelectItem>
-                    <SelectItem value="Preventive">Preventive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Priority *</Label>
-                <Select value={formPriority} onValueChange={(v) => setFormPriority(v as CapaPriority)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Critical">Critical</SelectItem>
-                    <SelectItem value="High">High</SelectItem>
-                    <SelectItem value="Medium">Medium</SelectItem>
-                    <SelectItem value="Low">Low</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Source</Label>
-                <Select value={formSource} onValueChange={(v) => setFormSource(v as CapaSource)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Non-Conformance">Non-Conformance</SelectItem>
-                    <SelectItem value="Audit Finding">Audit Finding</SelectItem>
-                    <SelectItem value="Customer Complaint">Customer Complaint</SelectItem>
-                    <SelectItem value="Management Review">Management Review</SelectItem>
-                    <SelectItem value="Process Monitoring">Process Monitoring</SelectItem>
-                    <SelectItem value="Supplier Issue">Supplier Issue</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Root Cause Category</Label>
-                <Select value={formRootCauseCategory} onValueChange={(v) => setFormRootCauseCategory(v as RootCauseCategory)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {(['Man', 'Machine', 'Method', 'Material', 'Measurement', 'Environment', 'Management'] as RootCauseCategory[]).map(c => (
-                      <SelectItem key={c} value={c}>{c}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label>Description *</Label>
-              <Textarea value={formDescription} onChange={(e) => setFormDescription(e.target.value)} placeholder="Describe the CAPA..." rows={3} />
-            </div>
-            <div className="grid gap-2">
-              <Label>Problem Statement</Label>
-              <Textarea value={formProblemStatement} onChange={(e) => setFormProblemStatement(e.target.value)} placeholder="What is the problem?" rows={2} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Assigned To *</Label>
-                <Select value={formAssignedTo} onValueChange={setFormAssignedTo}>
-                  <SelectTrigger><SelectValue placeholder="Select user" /></SelectTrigger>
-                  <SelectContent>
-                    {profiles.map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.fullName || p.email}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Due Date *</Label>
-                <Input type="date" value={formDueDate} onChange={(e) => setFormDueDate(e.target.value)} />
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label>Linked Document (Approved SOP)</Label>
-              <Select value={formLinkedDocId} onValueChange={setFormLinkedDocId}>
-                <SelectTrigger><SelectValue placeholder="Select linked SOP" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {approvedSops.map(d => (
-                    <SelectItem key={d.id} value={d.id}>{d.documentNumber} - {d.title}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button className="w-full" onClick={handleCreate} disabled={!formTitle || !formDescription || !formAssignedTo}>
-              Create CAPA
-            </Button>
-          </div>
+          <RichFormRenderer
+            template={CAPA_FORM_TEMPLATE}
+            values={formValues}
+            onChange={setFormValues}
+            mode="edit"
+            onSubmit={handleRichFormSubmit}
+            onSaveDraft={handleRichFormSaveDraft}
+          />
         </DialogContent>
       </Dialog>
 

@@ -4,6 +4,7 @@ import { useQMSStore } from '@/lib/demo-store';
 import { createNCR, updateNCR } from '@/services/ncrService';
 import { useAuth } from '@/contexts/AuthContext';
 import { ElectronicSignatureModal } from '@/components/shared/ElectronicSignatureModal';
+import { OosOotCreateForm } from './OosOotCreateForm';
 import { cn, formatDate } from '@/lib/utils';
 import type { NonConformance, NcrStatus, NcrDisposition, SignatureType } from '@/types/qms';
 import {
@@ -55,8 +56,6 @@ const dispositionColors: Record<string, string> = {
   'Pending': 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
 };
 
-type OosOotType = 'OOS' | 'OOT';
-
 export function OosOotView() {
   const { currentUser, hasPermission } = useAuth();
   const ncrs = useQMSStore(state => state.ncrs);
@@ -96,18 +95,6 @@ export function OosOotView() {
   // E-signature
   const [showEsigModal, setShowEsigModal] = useState(false);
   const [pendingAction, setPendingAction] = useState<string>('');
-
-  // Create form state
-  const [createTitle, setCreateTitle] = useState('');
-  const [createType, setCreateType] = useState<OosOotType>('OOS');
-  const [createLotNumber, setCreateLotNumber] = useState('');
-  const [createDescription, setCreateDescription] = useState('');
-  const [createAnalyticalMethod, setCreateAnalyticalMethod] = useState('');
-  const [createMeasuredValue, setCreateMeasuredValue] = useState('');
-  const [createMeasuredUnit, setCreateMeasuredUnit] = useState('');
-  const [createSpecLimit, setCreateSpecLimit] = useState('');
-  const [createAssignedTo, setCreateAssignedTo] = useState('');
-  const [createDueDate, setCreateDueDate] = useState('');
 
   // Filtered NCRs
   const filteredNcrs = useMemo(() => {
@@ -174,49 +161,7 @@ export function OosOotView() {
     setShowDetailDialog(true);
   };
 
-  const resetCreateForm = () => {
-    setCreateTitle('');
-    setCreateType('OOS');
-    setCreateLotNumber('');
-    setCreateDescription('');
-    setCreateAnalyticalMethod('');
-    setCreateMeasuredValue('');
-    setCreateMeasuredUnit('');
-    setCreateSpecLimit('');
-    setCreateAssignedTo('');
-    setCreateDueDate('');
-  };
 
-  const handleCreateOosOot = () => {
-    if (!createTitle) return;
-    const ncrCount = ncrs.length;
-    createNCR({
-      ncrNumber: `NCR-2024-${String(ncrCount + 1).padStart(3, '0')}`,
-      title: createTitle,
-      type: createType,
-      status: 'Open',
-      severity: 'Major',
-      source: 'Quality Control Testing',
-      description: createDescription,
-      lotNumber: createLotNumber || undefined,
-      disposition: 'Pending',
-      isOosOot: true,
-      analyticalMethod: createAnalyticalMethod || undefined,
-      measuredValue: createMeasuredValue ? parseFloat(createMeasuredValue) : undefined,
-      measuredUnit: createMeasuredUnit || undefined,
-      specLimit: createSpecLimit || undefined,
-      phase1Conclusion: 'Pending',
-      phase2Required: false,
-      phase2Conclusion: 'Pending',
-      rejectLot: false,
-      assignedTo: createAssignedTo || undefined,
-      createdDate: new Date().toISOString(),
-      createdById: currentUser?.id,
-      organizationId: 'org-001',
-    });
-    resetCreateForm();
-    setShowCreateDialog(false);
-  };
 
   const handleAdvancePhase1 = () => {
     if (!selectedNcr || !phase1Conclusion) return;
@@ -291,7 +236,7 @@ export function OosOotView() {
           <p className="text-muted-foreground mt-1">Out of Specification / Out of Trend — FDA &amp; ICH Q2(R1) Guidance</p>
         </div>
         {hasPermission('ncr.create') && (
-          <Button onClick={() => { resetCreateForm(); setShowCreateDialog(true); }}>
+          <Button onClick={() => setShowCreateDialog(true)}>
             <Plus className="h-4 w-4 mr-2" />Create OOS/OOT
           </Button>
         )}
@@ -475,94 +420,16 @@ export function OosOotView() {
         </CardContent>
       </Card>
 
-      {/* Create OOS/OOT Dialog */}
+      {/* Create OOS/OOT Dialog — Wizard */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[750px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FlaskConical className="h-5 w-5 text-primary" />
               Create OOS/OOT Investigation
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>NCR Number</Label>
-                <Input value={`NCR-2024-${String(ncrs.length + 1).padStart(3, '0')}`} disabled className="bg-muted" />
-              </div>
-              <div className="grid gap-2">
-                <Label>Type *</Label>
-                <Select value={createType} onValueChange={(v) => setCreateType(v as OosOotType)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="OOS">OOS - Out of Specification</SelectItem>
-                    <SelectItem value="OOT">OOT - Out of Trend</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label>Title *</Label>
-              <Input value={createTitle} onChange={(e) => setCreateTitle(e.target.value)} placeholder="e.g., Out of Specification Result - API Assay" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Lot Number</Label>
-                <Input value={createLotNumber} onChange={(e) => setCreateLotNumber(e.target.value)} placeholder="BN-2024-XXX" />
-              </div>
-              <div className="grid gap-2">
-                <Label>Assigned To</Label>
-                <Select value={createAssignedTo} onValueChange={setCreateAssignedTo}>
-                  <SelectTrigger><SelectValue placeholder="Select user..." /></SelectTrigger>
-                  <SelectContent>
-                    {profiles.map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.fullName || p.email}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label>Description</Label>
-              <Textarea value={createDescription} onChange={(e) => setCreateDescription(e.target.value)} placeholder="Describe the OOS/OOT finding..." rows={3} />
-            </div>
-
-            <Separator />
-            <h4 className="font-semibold text-sm flex items-center gap-2">
-              <Beaker className="h-4 w-4 text-primary" />
-              Specification Information
-            </h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Analytical Method</Label>
-                <Input value={createAnalyticalMethod} onChange={(e) => setCreateAnalyticalMethod(e.target.value)} placeholder="e.g., HPLC Method QC-M-001" />
-              </div>
-              <div className="grid gap-2">
-                <Label>Specification Limit</Label>
-                <Input value={createSpecLimit} onChange={(e) => setCreateSpecLimit(e.target.value)} placeholder="e.g., 95.0-105.0%" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Measured Value</Label>
-                <Input type="number" value={createMeasuredValue} onChange={(e) => setCreateMeasuredValue(e.target.value)} placeholder="e.g., 92.3" />
-              </div>
-              <div className="grid gap-2">
-                <Label>Measured Unit</Label>
-                <Input value={createMeasuredUnit} onChange={(e) => setCreateMeasuredUnit(e.target.value)} placeholder="e.g., %, mg/L, ppm" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Due Date</Label>
-                <Input type="date" value={createDueDate} onChange={(e) => setCreateDueDate(e.target.value)} />
-              </div>
-            </div>
-
-            <Button className="w-full" onClick={handleCreateOosOot} disabled={!createTitle}>
-              <Plus className="h-4 w-4 mr-2" />Create Investigation
-            </Button>
-          </div>
+          <OosOotCreateForm onComplete={() => setShowCreateDialog(false)} />
         </DialogContent>
       </Dialog>
 

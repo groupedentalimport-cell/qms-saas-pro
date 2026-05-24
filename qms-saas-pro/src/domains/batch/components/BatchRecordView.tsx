@@ -7,6 +7,8 @@ import { ElectronicSignatureModal } from '@/components/shared/ElectronicSignatur
 import { cn, formatDate } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import type { BatchRecord, BatchStep, BatchStatus, BatchStepStatus, SignatureType } from '@/types/qms';
+import { RichFormRenderer } from '@/components/shared/RichFormRenderer';
+import { BATCH_RECORD_FORM_TEMPLATE } from '@/lib/templates/batch-record-form-template';
 import {
   Package, Plus, Search, ArrowRight, CheckCircle2, Lock, AlertTriangle,
   ShieldCheck, Play, Clock, User, FileCheck, AlertCircle,
@@ -15,7 +17,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -45,8 +46,6 @@ const stepStatusColors: Record<BatchStepStatus, string> = {
 
 const batchStatusFlow: BatchStatus[] = ['In Progress', 'Pending QA Review', 'Released'];
 
-const batchSizeUnits = ['vials', 'units', 'tablets', 'kg', 'liters'];
-
 function getNextBatchStatus(current: BatchStatus): BatchStatus | null {
   const idx = batchStatusFlow.indexOf(current);
   return idx < batchStatusFlow.length - 1 ? batchStatusFlow[idx + 1] : null;
@@ -75,19 +74,12 @@ export function BatchRecordView() {
   const [selectedBatch, setSelectedBatch] = useState<BatchRecord | null>(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
 
+  // Rich form state
+  const [formValues, setFormValues] = useState<Record<string, unknown>>({});
+
   // Electronic signature
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [pendingReleaseBatch, setPendingReleaseBatch] = useState<BatchRecord | null>(null);
-
-  // Create form state
-  const [formAutoLot, setFormAutoLot] = useState(true);
-  const [formLotNumber, setFormLotNumber] = useState('');
-  const [formProductName, setFormProductName] = useState('');
-  const [formProductCode, setFormProductCode] = useState('');
-  const [formBatchSize, setFormBatchSize] = useState('');
-  const [formBatchSizeUnit, setFormBatchSizeUnit] = useState('vials');
-  const [formMfgDate, setFormMfgDate] = useState('');
-  const [formExpiryDate, setFormExpiryDate] = useState('');
 
   // Step editing
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
@@ -126,42 +118,6 @@ export function BatchRecordView() {
     const steps = batch.steps || [];
     if (steps.length === 0) return 0;
     return Math.round((steps.filter(s => s.status === 'Completed').length / steps.length) * 100);
-  };
-
-  const generateLotNumber = () => {
-    const count = batchRecords.length + 1;
-    return `BN-${new Date().getFullYear()}-${String(count).padStart(3, '0')}`;
-  };
-
-  const resetForm = () => {
-    setFormAutoLot(true);
-    setFormLotNumber('');
-    setFormProductName('');
-    setFormProductCode('');
-    setFormBatchSize('');
-    setFormBatchSizeUnit('vials');
-    setFormMfgDate('');
-    setFormExpiryDate('');
-  };
-
-  const handleCreate = () => {
-    const lotNumber = formAutoLot ? generateLotNumber() : formLotNumber;
-    createBatchRecord({
-      lotNumber,
-      productName: formProductName,
-      productCode: formProductCode || undefined,
-      batchSize: formBatchSize ? parseInt(formBatchSize) : undefined,
-      batchSizeUnit: formBatchSizeUnit,
-      manufacturingDate: formMfgDate ? new Date(formMfgDate).toISOString() : new Date().toISOString(),
-      expiryDate: formExpiryDate ? new Date(formExpiryDate).toISOString() : undefined,
-      status: 'In Progress',
-      isLocked: false,
-      organizationId: 'org-001',
-      createdById: currentUser?.id,
-      steps: [],
-    });
-    resetForm();
-    setShowCreateDialog(false);
   };
 
   const canCompleteStep = (batch: BatchRecord, step: BatchStep): boolean => {
@@ -306,7 +262,7 @@ export function BatchRecordView() {
           <p className="text-muted-foreground mt-1">Batch record management and QA release</p>
         </div>
         {hasPermission('batch.create') && (
-          <Button onClick={() => { resetForm(); setShowCreateDialog(true); }}>
+          <Button onClick={() => setShowCreateDialog(true)}>
             <Plus className="h-4 w-4 mr-2" />New Batch Record
           </Button>
         )}
@@ -448,68 +404,61 @@ export function BatchRecordView() {
         </CardContent>
       </Card>
 
-      {/* Create Batch Record Dialog */}
+      {/* ─── Create Batch Record Dialog — Rich Form ─── */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Create New Batch Record</DialogTitle></DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="autoLot" className="text-sm">Auto-generate lot number</Label>
-              <input
-                id="autoLot"
-                type="checkbox"
-                checked={formAutoLot}
-                onChange={(e) => setFormAutoLot(e.target.checked)}
-                className="rounded border-gray-300"
-              />
-            </div>
-            {!formAutoLot && (
-              <div className="grid gap-2">
-                <Label>Lot Number *</Label>
-                <Input value={formLotNumber} onChange={(e) => setFormLotNumber(e.target.value)} placeholder="BN-2024-XXX" />
-              </div>
-            )}
-            <div className="grid gap-2">
-              <Label>Product Name *</Label>
-              <Input value={formProductName} onChange={(e) => setFormProductName(e.target.value)} placeholder="Product name" />
-            </div>
-            <div className="grid gap-2">
-              <Label>Product Code</Label>
-              <Input value={formProductCode} onChange={(e) => setFormProductCode(e.target.value)} placeholder="PROD-XXX" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Batch Size</Label>
-                <Input type="number" value={formBatchSize} onChange={(e) => setFormBatchSize(e.target.value)} placeholder="0" />
-              </div>
-              <div className="grid gap-2">
-                <Label>Unit</Label>
-                <Select value={formBatchSizeUnit} onValueChange={setFormBatchSizeUnit}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {batchSizeUnits.map(u => <SelectItem key={u} value={u}>{u.charAt(0).toUpperCase() + u.slice(1)}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Manufacturing Date *</Label>
-                <Input type="date" value={formMfgDate} onChange={(e) => setFormMfgDate(e.target.value)} />
-              </div>
-              <div className="grid gap-2">
-                <Label>Expiry Date</Label>
-                <Input type="date" value={formExpiryDate} onChange={(e) => setFormExpiryDate(e.target.value)} />
-              </div>
-            </div>
-            <Button
-              className="w-full"
-              onClick={handleCreate}
-              disabled={!formProductName || (!formAutoLot && !formLotNumber)}
-            >
-              Create Batch Record
-            </Button>
-          </div>
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create New Batch Record</DialogTitle>
+          </DialogHeader>
+          <RichFormRenderer
+            template={BATCH_RECORD_FORM_TEMPLATE}
+            values={formValues}
+            onChange={setFormValues}
+            mode="edit"
+            onSubmit={(values, signatureHash) => {
+              const lotNumber = String(values.lot_number || `BN-2024-${String(batchRecords.length + 1).padStart(3, '0')}`);
+              const productName = String(values.product_name || 'New Product');
+              const productCode = String(values.product_code || '');
+              const manufacturingDate = String(values.manufacturing_date || '');
+              const expiryDate = String(values.expiry_date || '');
+              const batchSize = values.batch_size ? Number(values.batch_size) : undefined;
+              const batchSizeUnit = String(values.batch_size_unit || 'units');
+              const sopRef = String(values.sop_reference || '');
+
+              // Map process steps from repeater to BatchStep[]
+              const rawSteps = Array.isArray(values.process_steps) ? values.process_steps : [];
+              const steps: BatchStep[] = rawSteps.map((s: any, i: number) => ({
+                id: `step-${Date.now()}-${i}`,
+                batchRecordId: '',
+                stepOrder: i + 1,
+                stepName: String(s.ps_description || s.ps_step || `Step ${i + 1}`),
+                instructions: String(s.ps_expected || ''),
+                expectedValue: String(s.ps_expected || ''),
+                actualValue: String(s.ps_actual || ''),
+                status: 'Pending' as BatchStepStatus,
+                operatorId: String(s.ps_operator || ''),
+                createdAt: new Date().toISOString(),
+              }));
+
+              createBatchRecord({
+                lotNumber,
+                productName,
+                productCode: productCode || undefined,
+                manufacturingDate: manufacturingDate ? new Date(manufacturingDate).toISOString() : new Date().toISOString(),
+                expiryDate: expiryDate ? new Date(expiryDate).toISOString() : new Date().toISOString(),
+                batchSize,
+                batchSizeUnit: batchSizeUnit as any,
+                status: 'In Progress',
+                steps,
+                isLocked: false,
+                organizationId: 'org-001',
+                createdById: currentUser?.id,
+              });
+              setFormValues({});
+              setShowCreateDialog(false);
+            }}
+            onSaveDraft={(values) => setFormValues(values)}
+          />
         </DialogContent>
       </Dialog>
 

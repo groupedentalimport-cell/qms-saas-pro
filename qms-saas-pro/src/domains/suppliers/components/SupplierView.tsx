@@ -5,6 +5,8 @@ import { createSupplier, updateSupplier } from '@/services/supplierService';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn, formatDate } from '@/lib/utils';
 import type { Supplier, SupplierCategory, SupplierStatus } from '@/types/qms';
+import { RichFormRenderer } from '@/components/shared/RichFormRenderer';
+import { SUPPLIER_FORM_TEMPLATE } from '@/lib/templates/supplier-form-template';
 import {
   Truck, Plus, Search, ArrowRight, CheckCircle2, XCircle, AlertTriangle,
   Award, FileText, Edit3, Save, Star, CalendarClock, TrendingUp,
@@ -13,7 +15,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -87,14 +88,8 @@ export function SupplierView() {
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
 
-  // Create form state
-  const [formAutoCode, setFormAutoCode] = useState(true);
-  const [formCode, setFormCode] = useState('');
-  const [formName, setFormName] = useState('');
-  const [formCategory, setFormCategory] = useState<SupplierCategory>('Raw Material');
-  const [formQualDate, setFormQualDate] = useState('');
-  const [formNextReviewDate, setFormNextReviewDate] = useState('');
-  const [formCertifications, setFormCertifications] = useState('');
+  // Rich form state
+  const [formValues, setFormValues] = useState<Record<string, unknown>>({});
 
   // Inline performance score editing
   const [editingScore, setEditingScore] = useState(false);
@@ -125,39 +120,6 @@ export function SupplierView() {
         Math.max(suppliers.filter(s => s.performanceScore !== undefined && s.performanceScore > 0).length, 1)
       )
     : 0;
-
-  const generateSupplierCode = () => {
-    const count = suppliers.length + 1;
-    return `SUP-${String(count).padStart(3, '0')}`;
-  };
-
-  const resetForm = () => {
-    setFormAutoCode(true);
-    setFormCode('');
-    setFormName('');
-    setFormCategory('Raw Material');
-    setFormQualDate('');
-    setFormNextReviewDate('');
-    setFormCertifications('');
-  };
-
-  const handleCreate = () => {
-    const code = formAutoCode ? generateSupplierCode() : formCode;
-    createSupplier({
-      supplierCode: code,
-      name: formName,
-      category: formCategory,
-      status: 'Under Evaluation',
-      qualificationDate: formQualDate ? new Date(formQualDate).toISOString() : undefined,
-      nextReviewDate: formNextReviewDate ? new Date(formNextReviewDate).toISOString() : undefined,
-      certifications: formCertifications ? formCertifications.split(',').map(c => c.trim()).filter(Boolean) : [],
-      performanceScore: 0,
-      organizationId: 'org-001',
-      createdById: currentUser?.id,
-    });
-    resetForm();
-    setShowCreateDialog(false);
-  };
 
   const handleStatusAdvancement = (supplier: Supplier, newStatus: SupplierStatus) => {
     const updates: Partial<Supplier> = { status: newStatus };
@@ -214,7 +176,7 @@ export function SupplierView() {
           <p className="text-muted-foreground mt-1">Supplier qualification and management</p>
         </div>
         {hasPermission('supplier.create') && (
-          <Button onClick={() => { resetForm(); setShowCreateDialog(true); }}>
+          <Button onClick={() => setShowCreateDialog(true)}>
             <Plus className="h-4 w-4 mr-2" />New Supplier
           </Button>
         )}
@@ -375,62 +337,48 @@ export function SupplierView() {
         </CardContent>
       </Card>
 
-      {/* Create Supplier Dialog */}
+      {/* ─── Create Supplier Dialog — Rich Form ─── */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Create New Supplier</DialogTitle></DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="flex items-center gap-2">
-              <Label htmlFor="autoCode" className="text-sm">Auto-generate supplier code</Label>
-              <input
-                id="autoCode"
-                type="checkbox"
-                checked={formAutoCode}
-                onChange={(e) => setFormAutoCode(e.target.checked)}
-                className="rounded border-gray-300"
-              />
-            </div>
-            {!formAutoCode && (
-              <div className="grid gap-2">
-                <Label>Supplier Code *</Label>
-                <Input value={formCode} onChange={(e) => setFormCode(e.target.value)} placeholder="SUP-XXX" />
-              </div>
-            )}
-            <div className="grid gap-2">
-              <Label>Name *</Label>
-              <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Supplier name" />
-            </div>
-            <div className="grid gap-2">
-              <Label>Category</Label>
-              <Select value={formCategory} onValueChange={(v) => setFormCategory(v as SupplierCategory)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {supplierCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Qualification Date</Label>
-                <Input type="date" value={formQualDate} onChange={(e) => setFormQualDate(e.target.value)} />
-              </div>
-              <div className="grid gap-2">
-                <Label>Next Review Date</Label>
-                <Input type="date" value={formNextReviewDate} onChange={(e) => setFormNextReviewDate(e.target.value)} />
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label>Certifications (comma separated)</Label>
-              <Input value={formCertifications} onChange={(e) => setFormCertifications(e.target.value)} placeholder="ISO 9001, ISO 13485, ..." />
-            </div>
-            <Button
-              className="w-full"
-              onClick={handleCreate}
-              disabled={!formName || (!formAutoCode && !formCode)}
-            >
-              Create Supplier
-            </Button>
-          </div>
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Create New Supplier</DialogTitle>
+          </DialogHeader>
+          <RichFormRenderer
+            template={SUPPLIER_FORM_TEMPLATE}
+            values={formValues}
+            onChange={setFormValues}
+            mode="edit"
+            onSubmit={(values, signatureHash) => {
+              const name = String(values.supplier_name || values.name || 'New Supplier');
+              const code = String(values.supplier_code || '');
+              const category = String(values.category || 'Raw Material');
+              const status = String(values.qualification_status || values.status || 'Under Evaluation');
+              const qualificationDate = String(values.qualification_date || '');
+              const nextReviewDate = String(values.next_review_date || '');
+              const perfScore = values.performance_score ? Number(values.performance_score) * 20 : 80; // rating 1-5 -> score 0-100
+              const qualificationDocId = String(values.linked_qualification_doc || values.qualification_doc_id || '');
+              const certs = Array.isArray(values.certifications)
+                ? values.certifications.map((c: any) => c.cert_name || c.name).filter(Boolean)
+                : [];
+
+              createSupplier({
+                supplierCode: code || `SUP-${String(suppliers.length + 1).padStart(3, '0')}`,
+                name,
+                category: category as any,
+                status: status as any,
+                qualificationDate: qualificationDate ? new Date(qualificationDate).toISOString() : undefined,
+                nextReviewDate: nextReviewDate ? new Date(nextReviewDate).toISOString() : undefined,
+                certifications: certs.length > 0 ? certs : undefined,
+                performanceScore: perfScore,
+                qualificationDocId: qualificationDocId || undefined,
+                organizationId: 'org-001',
+                createdById: currentUser?.id,
+              });
+              setFormValues({});
+              setShowCreateDialog(false);
+            }}
+            onSaveDraft={(values) => setFormValues(values)}
+          />
         </DialogContent>
       </Dialog>
 

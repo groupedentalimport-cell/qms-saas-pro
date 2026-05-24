@@ -4,6 +4,8 @@ import { useQMSStore } from '@/lib/demo-store';
 import { useAuth } from '@/contexts/AuthContext';
 import { createNCR, updateNCR } from '@/services/ncrService';
 import { ElectronicSignatureModal } from '@/components/shared/ElectronicSignatureModal';
+import { RichFormRenderer } from '@/components/shared/RichFormRenderer';
+import { NCR_FORM_TEMPLATE } from '@/lib/templates/ncr-form-template';
 import { cn, formatDate } from '@/lib/utils';
 import type { NonConformance, NcrStatus, NcrType, NcrSeverity, NcrDisposition, SignatureType } from '@/types/qms';
 import {
@@ -81,22 +83,8 @@ export function NcrView() {
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [pendingCloseNcr, setPendingCloseNcr] = useState<NonConformance | null>(null);
 
-  // Create form state
-  const [formTitle, setFormTitle] = useState('');
-  const [formType, setFormType] = useState<NcrType>('Process');
-  const [formSeverity, setFormSeverity] = useState<NcrSeverity>('Major');
-  const [formSource, setFormSource] = useState('');
-  const [formDescription, setFormDescription] = useState('');
-  const [formLotNumber, setFormLotNumber] = useState('');
-  const [formQtyAffected, setFormQtyAffected] = useState('');
-  const [formAssignedTo, setFormAssignedTo] = useState('');
-  const [formDueDate, setFormDueDate] = useState('');
-  // OOS/OOT fields
-  const [formAnalyticalMethod, setFormAnalyticalMethod] = useState('');
-  const [formMeasuredValue, setFormMeasuredValue] = useState('');
-  const [formMeasuredUnit, setFormMeasuredUnit] = useState('');
-  const [formSpecLimit, setFormSpecLimit] = useState('');
-  const [formIsOosOot, setFormIsOosOot] = useState(false);
+  // Rich form state
+  const [formValues, setFormValues] = useState<Record<string, unknown>>({});
 
   // Detail dialog disposition edit
   const [detailDisposition, setDetailDisposition] = useState<string>('');
@@ -131,40 +119,53 @@ export function NcrView() {
   };
 
   const resetForm = () => {
-    setFormTitle(''); setFormType('Process'); setFormSeverity('Major');
-    setFormSource(''); setFormDescription(''); setFormLotNumber('');
-    setFormQtyAffected(''); setFormAssignedTo(''); setFormDueDate('');
-    setFormAnalyticalMethod(''); setFormMeasuredValue('');
-    setFormMeasuredUnit(''); setFormSpecLimit(''); setFormIsOosOot(false);
+    setFormValues({});
   };
 
-  const handleCreate = () => {
+  // ── Rich form submission handler ──
+  const handleRichFormSubmit = (values: Record<string, unknown>, signatureHash?: string) => {
+    const title = String(values.ncr_title || values.problem_title || 'New NCR');
+    const type = String(values.ncr_type || values.type || 'Process') as NcrType;
+    const severity = String(values.severity || 'Major') as NcrSeverity;
+    const source = String(values.source || '') || undefined;
+    const description = String(values.problem_description || values.description || '');
+    const lotNumber = String(values.lot_number || values.lotNumber || '') || undefined;
+    const qtyAffected = values.quantity_affected || values.quantityAffected;
+    const assignedTo = String(values.assigned_to || values.assignedTo || '') || undefined;
+    const isOosOot = Boolean(values.is_oos_oot);
+    const targetDate = String(values.target_date || values.targetDate || '');
+
     createNCR({
       ncrNumber: `NCR-2024-${String(ncrs.length + 1).padStart(3, '0')}`,
-      title: formTitle,
-      type: formType,
+      title,
+      type,
       status: 'Open',
-      severity: formSeverity,
-      source: formSource || undefined,
-      description: formDescription,
-      lotNumber: formLotNumber || undefined,
-      quantityAffected: formQtyAffected ? parseInt(formQtyAffected) : undefined,
-      assignedTo: formAssignedTo || undefined,
+      severity,
+      source,
+      description,
+      lotNumber,
+      quantityAffected: qtyAffected ? parseInt(String(qtyAffected)) : undefined,
+      assignedTo,
       disposition: 'Pending',
-      isOosOot: formIsOosOot,
-      analyticalMethod: formIsOosOot ? formAnalyticalMethod || undefined : undefined,
-      measuredValue: formIsOosOot && formMeasuredValue ? parseFloat(formMeasuredValue) : undefined,
-      measuredUnit: formIsOosOot ? formMeasuredUnit || undefined : undefined,
-      specLimit: formIsOosOot ? formSpecLimit || undefined : undefined,
-      phase2Required: formIsOosOot,
+      isOosOot,
+      analyticalMethod: isOosOot ? String(values.analytical_method || '') || undefined : undefined,
+      measuredValue: isOosOot && values.measured_value ? parseFloat(String(values.measured_value)) : undefined,
+      measuredUnit: isOosOot ? String(values.measured_unit || '') || undefined : undefined,
+      specLimit: isOosOot ? String(values.spec_limit || '') || undefined : undefined,
+      phase2Required: isOosOot,
       rejectLot: false,
-      dueDate: formDueDate ? new Date(formDueDate).toISOString() : undefined,
+      dueDate: targetDate ? new Date(targetDate).toISOString() : undefined,
       createdDate: new Date().toISOString(),
       createdById: currentUser?.id,
       organizationId: 'org-001',
     });
-    resetForm();
+
+    setFormValues({});
     setShowCreateDialog(false);
+  };
+
+  const handleRichFormSaveDraft = (values: Record<string, unknown>) => {
+    setFormValues(values);
   };
 
   const handleAdvanceStatus = (ncr: NonConformance) => {
@@ -226,7 +227,7 @@ export function NcrView() {
             <AlertTriangle className="h-6 w-6 text-primary" />
             Non-Conformances
           </h1>
-          <p className="text-muted-foreground mt-1">Manage non-conformance reports and investigations</p>
+          <p className="text-muted-foreground mt-1">Manage non-conformance reports and investigations (ISO 13485 8.3)</p>
         </div>
         {hasPermission('ncr.create') && (
           <Button onClick={() => { resetForm(); setShowCreateDialog(true); }}>
@@ -368,105 +369,20 @@ export function NcrView() {
         </CardContent>
       </Card>
 
-      {/* Create NCR Dialog */}
+      {/* ─── Create NCR Dialog — Rich Form ─── */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create New NCR</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="grid gap-2">
-              <Label>Title *</Label>
-              <Input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} placeholder="NCR title" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Type *</Label>
-                <Select value={formType} onValueChange={(v) => {
-                  setFormType(v as NcrType);
-                  setFormIsOosOot(v === 'OOS' || v === 'OOT');
-                }}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {ncrTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Severity *</Label>
-                <Select value={formSeverity} onValueChange={(v) => setFormSeverity(v as NcrSeverity)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {ncrSeverities.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label>Source</Label>
-              <Input value={formSource} onChange={(e) => setFormSource(e.target.value)} placeholder="e.g., Customer Complaint, Internal Audit..." />
-            </div>
-            <div className="grid gap-2">
-              <Label>Description *</Label>
-              <Textarea value={formDescription} onChange={(e) => setFormDescription(e.target.value)} placeholder="Describe the non-conformance..." rows={3} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Lot Number</Label>
-                <Input value={formLotNumber} onChange={(e) => setFormLotNumber(e.target.value)} placeholder="BN-2024-XXX" />
-              </div>
-              <div className="grid gap-2">
-                <Label>Quantity Affected</Label>
-                <Input type="number" value={formQtyAffected} onChange={(e) => setFormQtyAffected(e.target.value)} placeholder="0" />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Assigned To</Label>
-                <Select value={formAssignedTo} onValueChange={setFormAssignedTo}>
-                  <SelectTrigger><SelectValue placeholder="Select user" /></SelectTrigger>
-                  <SelectContent>
-                    {profiles.map(p => <SelectItem key={p.id} value={p.id}>{p.fullName || p.email}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Due Date</Label>
-                <Input type="date" value={formDueDate} onChange={(e) => setFormDueDate(e.target.value)} />
-              </div>
-            </div>
-
-            {/* OOS/OOT Fields */}
-            {formIsOosOot && (
-              <div className="border border-red-200 dark:border-red-800 rounded-md p-4 space-y-3 bg-red-50/50 dark:bg-red-900/10">
-                <h4 className="font-medium text-sm flex items-center gap-2">
-                  <Beaker className="h-4 w-4 text-red-500" /> OOS/OOT Investigation Fields
-                </h4>
-                <div className="grid gap-2">
-                  <Label>Analytical Method</Label>
-                  <Input value={formAnalyticalMethod} onChange={(e) => setFormAnalyticalMethod(e.target.value)} placeholder="HPLC Method QC-M-XXX" />
-                </div>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="grid gap-2">
-                    <Label>Measured Value</Label>
-                    <Input type="number" value={formMeasuredValue} onChange={(e) => setFormMeasuredValue(e.target.value)} placeholder="0.0" />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Unit</Label>
-                    <Input value={formMeasuredUnit} onChange={(e) => setFormMeasuredUnit(e.target.value)} placeholder="%" />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Spec Limit</Label>
-                    <Input value={formSpecLimit} onChange={(e) => setFormSpecLimit(e.target.value)} placeholder="95.0-105.0%" />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <Button className="w-full" onClick={handleCreate} disabled={!formTitle || !formDescription}>
-              Create NCR
-            </Button>
-          </div>
+          <RichFormRenderer
+            template={NCR_FORM_TEMPLATE}
+            values={formValues}
+            onChange={setFormValues}
+            mode="edit"
+            onSubmit={handleRichFormSubmit}
+            onSaveDraft={handleRichFormSaveDraft}
+          />
         </DialogContent>
       </Dialog>
 

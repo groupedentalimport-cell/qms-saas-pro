@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { useQMSStore } from '@/lib/demo-store';
 import { useAuth } from '@/contexts/AuthContext';
-import { createRisk, updateRisk } from '@/services/riskService';
+import { updateRisk } from '@/services/riskService';
 import { cn, formatDate } from '@/lib/utils';
 import type { Risk, RiskCategory, RiskLevel, RiskStatus } from '@/types/qms';
 import {
@@ -26,6 +26,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
+import { RiskCreateForm } from './RiskCreateForm';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -95,19 +96,7 @@ export function RiskView() {
   const [selectedRisk, setSelectedRisk] = useState<Risk | null>(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
 
-  // Create form state
-  const [formTitle, setFormTitle] = useState('');
-  const [formCategory, setFormCategory] = useState<RiskCategory>('Process');
-  const [formProbability, setFormProbability] = useState(3);
-  const [formImpact, setFormImpact] = useState(3);
-  const [formDetectability, setFormDetectability] = useState(3);
-  const [formMitigation, setFormMitigation] = useState('');
-  const [formResidualRisk, setFormResidualRisk] = useState('');
-  const [formStatus, setFormStatus] = useState<RiskStatus>('Open');
 
-  // Computed
-  const formRpn = formProbability * formImpact * formDetectability;
-  const formRiskLevel = getRiskLevel(formRpn);
 
   // Filtered risks
   const filteredRisks = risks.filter(r => {
@@ -138,37 +127,7 @@ export function RiskView() {
     return counts;
   }, [risks]);
 
-  // Form helpers
-  const resetForm = () => {
-    setFormTitle('');
-    setFormCategory('Process');
-    setFormProbability(3);
-    setFormImpact(3);
-    setFormDetectability(3);
-    setFormMitigation('');
-    setFormResidualRisk('');
-    setFormStatus('Open');
-  };
 
-  const handleCreate = () => {
-    if (!formTitle.trim()) return;
-    createRisk({
-      riskNumber: `RISK-2024-${String(risks.length + 1).padStart(3, '0')}`,
-      title: formTitle.trim(),
-      category: formCategory,
-      probability: formProbability,
-      impact: formImpact,
-      detectability: formDetectability,
-      rpn: formRpn,
-      riskLevel: formRiskLevel,
-      mitigation: formMitigation.trim() || undefined,
-      residualRisk: formResidualRisk.trim() || undefined,
-      status: formStatus,
-      organizationId: 'org-001',
-    });
-    resetForm();
-    setShowCreateDialog(false);
-  };
 
   const openDetail = (risk: Risk) => {
     setSelectedRisk(risk);
@@ -198,7 +157,7 @@ export function RiskView() {
           <p className="text-muted-foreground mt-1">Risk assessment and management (ISO 14971)</p>
         </div>
         {hasPermission('risk.create') && (
-          <Button onClick={() => { resetForm(); setShowCreateDialog(true); }}>
+          <Button onClick={() => setShowCreateDialog(true)}>
             <Plus className="h-4 w-4 mr-2" />
             New Risk
           </Button>
@@ -424,98 +383,11 @@ export function RiskView() {
 
       {/* ─── Create Risk Dialog ─── */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create New Risk</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="grid gap-2">
-              <Label>Title *</Label>
-              <Input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} placeholder="Risk title" />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Category</Label>
-                <Select value={formCategory} onValueChange={(v) => setFormCategory(v as RiskCategory)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {riskCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Status</Label>
-                <Select value={formStatus} onValueChange={(v) => setFormStatus(v as RiskStatus)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {riskStatuses.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* P / I / D selectors */}
-            <div className="grid grid-cols-3 gap-4">
-              <div className="grid gap-2">
-                <Label>Probability (1-5)</Label>
-                <Select value={String(formProbability)} onValueChange={(v) => setFormProbability(Number(v))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {[1, 2, 3, 4, 5].map(v => (
-                      <SelectItem key={v} value={String(v)}>{v} — {probLabels[v - 1]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Impact (1-5)</Label>
-                <Select value={String(formImpact)} onValueChange={(v) => setFormImpact(Number(v))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {[1, 2, 3, 4, 5].map(v => (
-                      <SelectItem key={v} value={String(v)}>{v} — {impactLabels[v - 1]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Detectability (1-5)</Label>
-                <Select value={String(formDetectability)} onValueChange={(v) => setFormDetectability(Number(v))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {[1, 2, 3, 4, 5].map(v => (
-                      <SelectItem key={v} value={String(v)}>{v} — {v === 1 ? 'Very Detectable' : v === 5 ? 'Undetectable' : `Level ${v}`}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* RPN preview */}
-            <div className="flex items-center gap-4 p-3 bg-muted/50 rounded-md">
-              <div>
-                <span className="text-sm text-muted-foreground">RPN:</span>
-                <span className="text-xl font-bold ml-2">{formRpn}</span>
-              </div>
-              <Badge className={cn('text-xs', riskLevelColors[formRiskLevel])} variant="secondary">{formRiskLevel}</Badge>
-              <div className="text-xs text-muted-foreground">(P × I × D = {formProbability} × {formImpact} × {formDetectability})</div>
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Mitigation</Label>
-              <Textarea value={formMitigation} onChange={(e) => setFormMitigation(e.target.value)} placeholder="Risk mitigation plan..." rows={3} />
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Residual Risk</Label>
-              <Textarea value={formResidualRisk} onChange={(e) => setFormResidualRisk(e.target.value)} placeholder="Residual risk after mitigation..." rows={2} />
-            </div>
-
-            <Button className="w-full" onClick={handleCreate} disabled={!formTitle.trim()}>
-              Create Risk
-            </Button>
-          </div>
+          <RiskCreateForm onComplete={() => setShowCreateDialog(false)} />
         </DialogContent>
       </Dialog>
 

@@ -4,6 +4,8 @@ import { useQMSStore } from '@/lib/demo-store';
 import { useAuth } from '@/contexts/AuthContext';
 import { createAudit, updateAudit } from '@/services/auditEntityService';
 import { ElectronicSignatureModal } from '@/components/shared/ElectronicSignatureModal';
+import { RichFormRenderer } from '@/components/shared/RichFormRenderer';
+import { AUDIT_FORM_TEMPLATE } from '@/lib/templates/audit-form-template';
 import { cn, formatDate } from '@/lib/utils';
 import type { Audit, AuditStatus, AuditType, AuditFinding, SignatureType } from '@/types/qms';
 import {
@@ -69,13 +71,8 @@ export function AuditView() {
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [pendingCompleteAudit, setPendingCompleteAudit] = useState<Audit | null>(null);
 
-  // Create form state
-  const [formTitle, setFormTitle] = useState('');
-  const [formType, setFormType] = useState<AuditType>('Internal');
-  const [formScope, setFormScope] = useState('');
-  const [formScheduledDate, setFormScheduledDate] = useState('');
-  const [formLeadAuditor, setFormLeadAuditor] = useState('');
-  const [formAuditees, setFormAuditees] = useState('');
+  // Rich form state
+  const [formValues, setFormValues] = useState<Record<string, unknown>>({});
 
   // Add finding form state
   const [showAddFinding, setShowAddFinding] = useState(false);
@@ -111,8 +108,7 @@ export function AuditView() {
   };
 
   const resetForm = () => {
-    setFormTitle(''); setFormType('Internal'); setFormScope('');
-    setFormScheduledDate(''); setFormLeadAuditor(''); setFormAuditees('');
+    setFormValues({});
   };
 
   const resetFindingForm = () => {
@@ -121,21 +117,47 @@ export function AuditView() {
     setShowAddFinding(false);
   };
 
-  const handleCreate = () => {
+  // ── Rich form submission handler ──
+  const handleRichFormSubmit = (values: Record<string, unknown>, signatureHash?: string) => {
+    const title = String(values.audit_title || values.title || 'New Audit');
+    const type = String(values.audit_type || values.type || 'Internal') as AuditType;
+    const scope = String(values.audit_scope || values.scope || '') || undefined;
+    const scheduledDate = values.scheduled_date || values.scheduledDate;
+    const leadAuditor = String(values.lead_auditor || values.leadAuditor || '');
+    const auditees = values.auditees
+      ? (Array.isArray(values.auditees)
+          ? values.auditees.map((r: any) => r.au_name || r).filter(Boolean)
+          : String(values.auditees).split(',').map(s => s.trim()).filter(Boolean))
+      : undefined;
+
+    // Resolve leadAuditor ID to name if needed
+    const leadAuditorName = (() => {
+      const profile = profiles.find(p => p.id === leadAuditor);
+      return profile?.fullName || leadAuditor;
+    })();
+
     createAudit({
       auditNumber: `AUD-2024-${String(audits.length + 1).padStart(3, '0')}`,
-      title: formTitle,
-      type: formType,
+      title,
+      type,
       status: 'Planned',
-      scope: formScope || undefined,
-      scheduledDate: formScheduledDate ? new Date(formScheduledDate).toISOString() : new Date().toISOString(),
-      leadAuditor: formLeadAuditor,
-      auditees: formAuditees ? formAuditees.split(',').map(s => s.trim()).filter(Boolean) : undefined,
+      scope,
+      scheduledDate: scheduledDate
+        ? (typeof scheduledDate === 'object' && (scheduledDate as any).start
+            ? new Date(String((scheduledDate as any).start)).toISOString()
+            : new Date(String(scheduledDate)).toISOString())
+        : new Date().toISOString(),
+      leadAuditor: leadAuditorName,
+      auditees,
       findings: [],
       organizationId: 'org-001',
     });
     resetForm();
     setShowCreateDialog(false);
+  };
+
+  const handleRichFormSaveDraft = (values: Record<string, unknown>) => {
+    setFormValues(values);
   };
 
   const handleAdvanceStatus = (audit: Audit) => {
@@ -214,7 +236,7 @@ export function AuditView() {
             <ClipboardCheck className="h-6 w-6 text-primary" />
             Audits
           </h1>
-          <p className="text-muted-foreground mt-1">Plan, conduct and track quality audits</p>
+          <p className="text-muted-foreground mt-1">Plan, conduct and track quality audits (ISO 13485 8.2.4)</p>
         </div>
         {hasPermission('audit.create') && (
           <Button onClick={() => { resetForm(); setShowCreateDialog(true); }}>
@@ -330,54 +352,20 @@ export function AuditView() {
         </CardContent>
       </Card>
 
-      {/* Create Audit Dialog */}
+      {/* ─── Create Audit Dialog — Rich Form ─── */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create New Audit</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="grid gap-2">
-              <Label>Title *</Label>
-              <Input value={formTitle} onChange={(e) => setFormTitle(e.target.value)} placeholder="Audit title" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>Type *</Label>
-                <Select value={formType} onValueChange={(v) => setFormType(v as AuditType)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {auditTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Scheduled Date *</Label>
-                <Input type="date" value={formScheduledDate} onChange={(e) => setFormScheduledDate(e.target.value)} />
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label>Scope</Label>
-              <Textarea value={formScope} onChange={(e) => setFormScope(e.target.value)} placeholder="Audit scope..." rows={3} />
-            </div>
-            <div className="grid gap-2">
-              <Label>Lead Auditor *</Label>
-              <Select value={formLeadAuditor} onValueChange={setFormLeadAuditor}>
-                <SelectTrigger><SelectValue placeholder="Select lead auditor" /></SelectTrigger>
-                <SelectContent>
-                  {profiles.map(p => <SelectItem key={p.id} value={p.fullName || p.email}>{p.fullName || p.email}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label>Auditees</Label>
-              <Input value={formAuditees} onChange={(e) => setFormAuditees(e.target.value)} placeholder="Comma-separated names (e.g., John Doe, Jane Smith)" />
-              <p className="text-xs text-muted-foreground">Enter multiple auditees separated by commas</p>
-            </div>
-            <Button className="w-full" onClick={handleCreate} disabled={!formTitle || !formScheduledDate || !formLeadAuditor}>
-              Create Audit
-            </Button>
-          </div>
+          <RichFormRenderer
+            template={AUDIT_FORM_TEMPLATE}
+            values={formValues}
+            onChange={setFormValues}
+            mode="edit"
+            onSubmit={handleRichFormSubmit}
+            onSaveDraft={handleRichFormSaveDraft}
+          />
         </DialogContent>
       </Dialog>
 
@@ -497,7 +485,7 @@ export function AuditView() {
                           <Input
                             value={findingReferenceClause}
                             onChange={(e) => setFindingReferenceClause(e.target.value)}
-                            placeholder="e.g., ISO 13485 §8.2.4"
+                            placeholder="e.g., ISO 13485 8.2.4"
                           />
                         </div>
                       </div>
